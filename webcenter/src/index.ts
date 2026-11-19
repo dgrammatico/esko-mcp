@@ -25,7 +25,7 @@ const config = loadConfig();
 const client = new WebCenterClient(config);
 
 const server = new McpServer(
-  { name: "webcenter", version: "1.0.0" },
+  { name: "webcenter", version: "1.1.0" },
   {
     instructions:
       "Read-only access to Esko WebCenter (packaging projects, documents including ArtiosCAD designs, approvals, tasks and users). " +
@@ -40,4 +40,17 @@ registerTools(server, client, lookup);
 registerEngineeringTools(server, client, lookup);
 
 await server.connect(new StdioServerTransport());
+
+// Close the shared WebCenter session when Claude Desktop stops the server, so it doesn't hold one of the user's 5 sessions.
+let closing = false;
+async function shutdown() {
+  if (closing) return;
+  closing = true;
+  await Promise.race([client.close(), new Promise((r) => setTimeout(r, 3000))]);
+  process.exit(0);
+}
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+process.stdin.on("end", shutdown);
+process.stdin.on("close", shutdown);
 console.error(`WebCenter MCP server running (read-only) against ${config.baseUrl}${mockNote}${config.allowLive ? "" : " — live calls disabled unless the site is local"}`);

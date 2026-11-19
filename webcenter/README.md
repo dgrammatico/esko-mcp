@@ -28,7 +28,7 @@ End-user install guide: [../docs/INSTALL-WebCenter.md](../docs/INSTALL-WebCenter
 
 - **Read-only allowlist** (`READ_ONLY_PAGES` in `src/client.ts`): any SDK page not on the list is refused before a request is made. No create, update, delete, approve or upload call is on it.
 - **Credentials:** sent in an HTTPS POST body, never in a URL. Claude Desktop keeps the password in the OS keychain.
-- **Sessions:** at most 2 concurrent calls, because WebCenter allows 5 sessions per user, browser included.
+- **Sessions:** all calls share **one** WebCenter session (`OpenSession.jsp` / `CloseSession.jsp`, SDK 3.1.1), which is closed after 90 s idle and when the server stops. WebCenter allows only 5 sessions per user, browser included, and per-call logins can leave sessions behind when a call fails on the server. If `OpenSession.jsp` isn't available, it falls back to per-call logins. At most 2 calls run at once.
 - **Live switch:** with `WEBCENTER_ALLOW_LIVE` off, only `localhost` or the mock can be called.
 - **Downloads:** written only to the configured download folder, and never overwrite an existing file.
 
@@ -56,7 +56,7 @@ npm run mock         # standalone mock at http://127.0.0.1:8765/WebCenter/ (MOCK
 npm run package      # -> dist/esko-webcenter-<version>.mcpb
 ```
 
-Environment variables (outside Claude Desktop): `WEBCENTER_BASE_URL` (or `mock`), `WEBCENTER_USERNAME`, `WEBCENTER_PASSWORD`, `WEBCENTER_OAUTH_TOKEN`, `WEBCENTER_SSOIID`, `WEBCENTER_ALLOW_LIVE`, `WEBCENTER_DOWNLOAD_DIR`, `WEBCENTER_TIMEOUT_MS`, `WEBCENTER_MAX_CONCURRENT`.
+Environment variables (outside Claude Desktop): `WEBCENTER_BASE_URL` (or `mock`), `WEBCENTER_USERNAME`, `WEBCENTER_PASSWORD`, `WEBCENTER_OAUTH_TOKEN`, `WEBCENTER_SSOIID`, `WEBCENTER_ALLOW_LIVE`, `WEBCENTER_DOWNLOAD_DIR`, `WEBCENTER_TIMEOUT_MS`, `WEBCENTER_MAX_CONCURRENT`, `WEBCENTER_SESSION_MODE` (`auto` default, `session`, `per-call`), `WEBCENTER_SESSION_IDLE_MS` (default 90000).
 
 ## Adding a tool
 

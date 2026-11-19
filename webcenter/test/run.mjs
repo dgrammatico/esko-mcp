@@ -176,6 +176,50 @@ try {
   check("OAuth token works", !r.isError, r.text);
   await oauth.close();
 
+  // ---- shared session handling
+  const openSessions = async () => (await (await fetch(`http://127.0.0.1:${PORT}/WebCenter/__sessions`)).json()).open;
+  const sess = await connect({ ...base, WEBCENTER_SESSION_IDLE_MS: "5000" });
+  for (let i = 0; i < 8; i++) await call(sess, "webcenter_find_projects", { page_size: 2 });
+  await Promise.all([call(sess, "webcenter_list_documents", { project_id: "00002_0000001001" }), call(sess, "webcenter_get_todo_list", {}), call(sess, "webcenter_find_users", {})]);
+  check("many calls (incl. parallel) use one shared session", (await openSessions()) === 1, `open sessions: ${await openSessions()}`);
+  await new Promise((r) => setTimeout(r, 6500));
+  check("session closed after idle timeout", (await openSessions()) === 0, `open sessions: ${await openSessions()}`);
+  r = await call(sess, "webcenter_get_user", { username: "MOCKUSER" });
+  check("session reopens on next call", !r.isError && (await openSessions()) === 1, r.text);
+  await sess.close();
+  await new Promise((r) => setTimeout(r, 800));
+  check("session closed when the server shuts down", (await openSessions()) === 0, `open sessions: ${await openSessions()}`);
+
+  // Session expired on the server side: reopen and retry transparently
+  const sess2 = await connect({ ...base });
+  await call(sess2, "webcenter_find_projects", {});
+  await fetch(`http://127.0.0.1:${PORT}/WebCenter/__expire`).catch(() => {});
+  r = await call(sess2, "webcenter_find_projects", {});
+  check("expired session is reopened and the call retried", !r.isError && r.json?.projects?.length === 3, r.text);
+  await sess2.close();
+  await new Promise((r) => setTimeout(r, 800));
+
+  // Session limit reached: clear message
+  const blockers = [];
+  for (let i = 0; i < 5; i++) {
+    const b = await connect({ ...base, WEBCENTER_SESSION_IDLE_MS: "60000" });
+    await call(b, "webcenter_get_todo_list", {});
+    blockers.push(b);
+  }
+  const sixth = await connect({ ...base });
+  r = await call(sixth, "webcenter_get_todo_list", {});
+  check("6th session -> error 004 with log-out advice", r.isError && /004/.test(r.text) && /Log out/.test(r.text), r.text);
+  await sixth.close();
+  for (const b of blockers) await b.close();
+  await new Promise((r) => setTimeout(r, 800));
+  check("all sessions released after servers close", (await openSessions()) === 0, `open sessions: ${await openSessions()}`);
+
+  // OpenSession not available: fall back to per-call logins
+  const nos = await connect({ ...base, WEBCENTER_USERNAME: "NOSESSION" });
+  r = await call(nos, "webcenter_find_projects", {});
+  check("falls back to per-call login when OpenSession is unavailable", !r.isError && r.json?.projects?.length === 3, r.text);
+  await nos.close();
+
   // Built-in mock mode (WEBCENTER_BASE_URL=mock): no separate mock process, no credentials
   const builtin = await connect({ WEBCENTER_BASE_URL: "mock" });
   r = await call(builtin, "webcenter_list_documents", { project_name: "ACME-1001 Cereal Carton" });

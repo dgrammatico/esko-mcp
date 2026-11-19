@@ -33,6 +33,8 @@ export interface WebCenterConfig {
   timeoutMs: number;
   maxConcurrent: number;
   downloadDir: string;
+  sessionMode: "auto" | "session" | "per-call";
+  sessionIdleMs: number;
 }
 
 export class WebCenterError extends Error {
@@ -46,7 +48,7 @@ const ERROR_HINTS: Record<string, string> = {
   "001": "Login failed. Check the username and password (the password is base64-encoded automatically).",
   "002": "A required parameter was missing.",
   "003": "A parameter had an invalid format or value.",
-  "004": "This user already has the maximum of 5 open WebCenter sessions (browser + SDK combined). Close a browser session or wait for one to time out.",
+  "004": "This user already has the maximum of 5 open WebCenter sessions (browser + SDK combined). Log out of WebCenter in the browser (closing the tab isn't enough), or wait for old sessions to time out (often about 30 minutes).",
   "005": "The WebCenter user doesn't have the privileges this call needs.",
   "006": "All WebCenter licenses are currently in use.",
   "007": "The WebCenter user's password has expired.",
@@ -77,6 +79,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WebCenterConfi
     timeoutMs: Number(env.WEBCENTER_TIMEOUT_MS || 30000),
     maxConcurrent: Math.max(1, Math.min(3, Number(env.WEBCENTER_MAX_CONCURRENT || 2))),
     downloadDir: (env.WEBCENTER_DOWNLOAD_DIR || "").trim() || join(homedir(), "Downloads", "WebCenter"),
+    sessionMode: (["auto", "session", "per-call"].includes((env.WEBCENTER_SESSION_MODE || "").trim()) ? env.WEBCENTER_SESSION_MODE!.trim() : "auto") as WebCenterConfig["sessionMode"],
+    sessionIdleMs: Math.max(5000, Number(env.WEBCENTER_SESSION_IDLE_MS || 90000)),
   };
 }
 
@@ -121,8 +125,38 @@ class Limiter {
 
 export type Params = Record<string, string | number | boolean | (string | number)[] | undefined | null>;
 
+/** Internal session pages (SDK 3.71/3.72). They log in/out only and change no data; never exposed to tools. */
+const SESSION_PAGES = new Set(["OpenSession.jsp", "CloseSession.jsp"]);
+
+interface SessionState {
+  id?: string;
+  cookies: Map<string, string>;
+}
+
+function readSetCookies(res: Response, into: Map<string, string>) {
+  const list: string[] = typeof (res.headers as any).getSetCookie === "function" ? (res.headers as any).getSetCookie() : [];
+  for (const c of list) {
+    const first = c.split(";")[0];
+    const eq = first.indexOf("=");
+    if (eq > 0) into.set(first.slice(0, eq).trim(), first.slice(eq + 1).trim());
+  }
+}
+
+function looksLikeLostSession(res: Response, data: Buffer): boolean {
+  if (data.length > 20000) return false;
+  const ct = res.headers.get("content-type") || "";
+  if (!/xml|html|text/i.test(ct) && ct) return false;
+  const text = data.toString("utf8");
+  return /<error>\s*<code>\s*001\s*<\/code>/i.test(text) || /^\s*(<!doctype html|<html)/i.test(text);
+}
+
 export class WebCenterClient {
   private limiter: Limiter;
+  private session?: SessionState;
+  private opening?: Promise<SessionState | undefined>;
+  private sessionUnsupported = false;
+  private idleTimer?: NodeJS.Timeout;
+
   constructor(public config: WebCenterConfig) {
     this.limiter = new Limiter(config.maxConcurrent);
   }
@@ -132,8 +166,14 @@ export class WebCenterClient {
     return new URL(path.replace(/^\//, ""), this.config.baseUrl).toString();
   }
 
+  /** "session" if calls share one WebCenter session, "per-call" if each call logs in and out. */
+  get sessionModeInUse(): "session" | "per-call" | "not yet known" {
+    if (this.config.sessionMode === "per-call" || this.sessionUnsupported) return "per-call";
+    return this.session ? "session" : "not yet known";
+  }
+
   private checkAllowed(page: string) {
-    if (!READ_ONLY_PAGES.has(page)) throw new WebCenterError(`Refusing to call ${page}: this server is read-only.`);
+    if (!READ_ONLY_PAGES.has(page) && !SESSION_PAGES.has(page)) throw new WebCenterError(`Refusing to call ${page}: this server is read-only.`);
     if (!isLocalHost(this.config.baseUrl) && !this.config.allowLive) {
       throw new WebCenterError(
         `Live WebCenter calls are switched off. ${this.config.baseUrl} is not a local mock, and WEBCENTER_ALLOW_LIVE is not set to true. ` +
@@ -145,12 +185,13 @@ export class WebCenterClient {
     }
   }
 
-  private buildRequest(params: Params) {
+  /** POST body + headers. Credentials are added unless the call runs inside an open session. */
+  private buildRequest(params: Params, withCredentials = true) {
     const body = new URLSearchParams();
     const headers: Record<string, string> = { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" };
     if (this.config.oauthToken) {
       headers["Authorization"] = `Bearer ${this.config.oauthToken}`;
-    } else {
+    } else if (withCredentials) {
       body.append("username", this.config.username!);
       body.append("password", Buffer.from(this.config.password!, "utf8").toString("base64"));
       if (this.config.ssoiid) body.append("ssoiid", this.config.ssoiid);
@@ -163,23 +204,121 @@ export class WebCenterClient {
     return { body, headers };
   }
 
+  private async fetchWithTimeout(page: string, body: URLSearchParams, headers: Record<string, string>, timeoutMs: number): Promise<Response> {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      return await fetch(new URL(page, this.config.baseUrl), { method: "POST", headers, body, signal: ctrl.signal, redirect: "follow" });
+    } catch (e: any) {
+      throw new WebCenterError(e?.name === "AbortError" ? `WebCenter did not answer within ${Math.round(timeoutMs / 1000)}s.` : `Could not reach WebCenter at ${this.config.baseUrl}: ${e?.message || e}`);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // ---- session handling (SDK 3.1.1, 3.71, 3.72) ------------------------------
+  // One WebCenter session is shared by all calls, then closed after a short idle period,
+  // instead of every call logging in and out (which can leave sessions behind when a call fails on the server).
+
+  private async ensureSession(): Promise<SessionState | undefined> {
+    if (this.config.sessionMode === "per-call" || this.sessionUnsupported) return undefined;
+    if (this.session) return this.session;
+    if (!this.opening) this.opening = this.openSession().finally(() => (this.opening = undefined));
+    return this.opening;
+  }
+
+  private async openSession(): Promise<SessionState | undefined> {
+    this.checkAllowed("OpenSession.jsp");
+    const { body, headers } = this.buildRequest({}, true);
+    const res = await this.fetchWithTimeout("OpenSession.jsp", body, headers, this.config.timeoutMs);
+    const text = await res.text();
+    const fallback = (why: string) => {
+      if (this.config.sessionMode === "session") throw new WebCenterError(`Couldn't open a WebCenter session: ${why}`);
+      this.sessionUnsupported = true;
+      console.error(`WebCenter: shared sessions unavailable (${why}); each call will log in and out.`);
+      return undefined;
+    };
+    if (res.status === 404) return fallback("OpenSession.jsp not found");
+    if (res.status >= 400) return fallback(`HTTP ${res.status}`);
+    if (/^\s*(<!doctype html|<html)/i.test(text)) {
+      // A login page means single sign-on is in the way; per-call logins would hit the same page.
+      throw new WebCenterError(
+        "WebCenter returned a web page instead of SDK data. This usually means single sign-on (SAML) is the default login on your site. " +
+          "Set WEBCENTER_SSOIID to the ID of the basic password login on the 'SSO Instance Configuration' admin page (SDK section 3.1.5), or use OAuth.",
+      );
+    }
+    let doc: any;
+    try {
+      doc = parser.parse(text);
+    } catch {
+      return fallback("unreadable response");
+    }
+    if (doc?.error) {
+      const code = String(doc.error.code ?? "000");
+      const hint = ERROR_HINTS[code];
+      // Login problems and the session limit would hit per-call mode too, so report them instead of falling back.
+      if (["001", "004", "006", "007", "033"].includes(code)) {
+        throw new WebCenterError(`WebCenter error ${code}: ${String(doc.error.message ?? "")}${hint ? ` — ${hint}` : ""}`, code);
+      }
+      return fallback(`error ${code}`);
+    }
+    const cookies = new Map<string, string>();
+    readSetCookies(res, cookies);
+    const id = str(doc?.session?.sessionID);
+    if (id && !cookies.has("JSESSIONID")) cookies.set("JSESSIONID", id);
+    if (!cookies.size) return fallback("no session ID returned");
+    this.session = { id, cookies };
+    this.touch();
+    return this.session;
+  }
+
+  private touch() {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => void this.close(), this.config.sessionIdleMs);
+    this.idleTimer.unref?.();
+  }
+
+  /** Close the shared session, if one is open. Safe to call any time. */
+  async close(): Promise<void> {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    const s = this.session ?? (this.opening ? await this.opening.catch(() => undefined) : undefined);
+    this.session = undefined;
+    if (!s) return;
+    try {
+      const { body, headers } = this.buildRequest({}, false);
+      headers["Cookie"] = [...s.cookies].map(([k, v]) => `${k}=${v}`).join("; ");
+      const res = await this.fetchWithTimeout("CloseSession.jsp", body, headers, 10000);
+      await res.arrayBuffer();
+    } catch {
+      /* the server will time the session out */
+    }
+  }
+
+  /** Send one SDK call, inside the shared session when available. Retries once if the session was lost. */
+  private async send(page: string, params: Params, timeoutMs: number): Promise<{ res: Response; data: Buffer }> {
+    this.checkAllowed(page);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const s = await this.ensureSession();
+      const { body, headers } = this.buildRequest(params, !s);
+      if (s) headers["Cookie"] = [...s.cookies].map(([k, v]) => `${k}=${v}`).join("; ");
+      const res = await this.fetchWithTimeout(page, body, headers, timeoutMs);
+      if (s) readSetCookies(res, s.cookies);
+      const data = Buffer.from(await res.arrayBuffer());
+      if (s && attempt === 0 && looksLikeLostSession(res, data)) {
+        if (this.session === s) this.session = undefined; // expired or invalidated: open a new one and retry
+        continue;
+      }
+      if (s) this.touch();
+      return { res, data };
+    }
+    throw new WebCenterError("WebCenter session could not be re-established.");
+  }
+
   /** Raw call. Parameters go in a POST body so credentials never appear in URLs or server access logs (SDK FAQ 4.1). */
   async callRaw(page: string, params: Params): Promise<{ contentType: string; text: string }> {
-    this.checkAllowed(page);
-    const { body, headers } = this.buildRequest(params);
-
     return this.limiter.run(async () => {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), this.config.timeoutMs);
-      let res: Response;
-      try {
-        res = await fetch(new URL(page, this.config.baseUrl), { method: "POST", headers, body, signal: ctrl.signal, redirect: "follow" });
-      } catch (e: any) {
-        throw new WebCenterError(e?.name === "AbortError" ? `WebCenter did not answer within ${this.config.timeoutMs / 1000}s.` : `Could not reach WebCenter at ${this.config.baseUrl}: ${e?.message || e}`);
-      } finally {
-        clearTimeout(timer);
-      }
-      const text = await res.text();
+      const { res, data } = await this.send(page, params, this.config.timeoutMs);
+      const text = data.toString("utf8");
       const contentType = res.headers.get("content-type") || "";
       if (res.status === 404) throw new WebCenterError(`${page} was not found on this WebCenter site (HTTP 404). Check WEBCENTER_BASE_URL.`);
       if (res.status >= 400) throw new WebCenterError(`WebCenter returned HTTP ${res.status} for ${page}.`);
@@ -195,44 +334,29 @@ export class WebCenterClient {
 
   /** Call an SDK page that returns a file (thumbnail, download). Returns the bytes and the file name WebCenter suggests. */
   async callBinary(page: string, params: Params): Promise<{ data: Buffer; contentType: string; fileName?: string }> {
-    this.checkAllowed(page);
-    const { body, headers } = this.buildRequest(params);
     return this.limiter.run(async () => {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), Math.max(this.config.timeoutMs, 120000));
-      let res: Response;
-      try {
-        res = await fetch(new URL(page, this.config.baseUrl), { method: "POST", headers, body, signal: ctrl.signal, redirect: "follow" });
-      } catch (e: any) {
-        clearTimeout(timer);
-        throw new WebCenterError(e?.name === "AbortError" ? "WebCenter took too long to send the file." : `Could not reach WebCenter at ${this.config.baseUrl}: ${e?.message || e}`);
-      }
-      try {
-        if (res.status === 404) throw new WebCenterError(`${page} was not found on this WebCenter site (HTTP 404).`);
-        if (res.status >= 400) throw new WebCenterError(`WebCenter returned HTTP ${res.status} for ${page}.`);
-        const data = Buffer.from(await res.arrayBuffer());
-        const contentType = res.headers.get("content-type") || "";
-        // Errors come back as small XML or HTML documents instead of the file.
-        if (data.length < 20000 && /xml|html|text/i.test(contentType)) {
-          const text = data.toString("utf8");
-          if (/<error>/i.test(text)) {
-            const doc = parser.parse(text);
-            const code = String(doc?.error?.code ?? "000");
-            const hint = ERROR_HINTS[code];
-            throw new WebCenterError(`WebCenter error ${code}: ${String(doc?.error?.message ?? "Undefined error")}${hint ? ` — ${hint}` : ""}`, code);
-          }
-          if (/^\s*(<!doctype html|<html)/i.test(text)) throw new WebCenterError("WebCenter returned a web page instead of the file. If your site uses single sign-on, set the SSO instance ID.");
+      const { res, data } = await this.send(page, params, Math.max(this.config.timeoutMs, 120000));
+      if (res.status === 404) throw new WebCenterError(`${page} was not found on this WebCenter site (HTTP 404).`);
+      if (res.status >= 400) throw new WebCenterError(`WebCenter returned HTTP ${res.status} for ${page}.`);
+      const contentType = res.headers.get("content-type") || "";
+      // Errors come back as small XML or HTML documents instead of the file.
+      if (data.length < 20000 && /xml|html|text/i.test(contentType)) {
+        const text = data.toString("utf8");
+        if (/<error>/i.test(text)) {
+          const doc = parser.parse(text);
+          const code = String(doc?.error?.code ?? "000");
+          const hint = ERROR_HINTS[code];
+          throw new WebCenterError(`WebCenter error ${code}: ${String(doc?.error?.message ?? "Undefined error")}${hint ? ` — ${hint}` : ""}`, code);
         }
-        const cd = res.headers.get("content-disposition") || "";
-        const m = cd.match(/filename\*=UTF-8''([^;]+)/i) || cd.match(/filename="?([^";]+)"?/i);
-        let fileName: string | undefined;
-        if (m) {
-          try { fileName = decodeURIComponent(m[1]); } catch { fileName = m[1]; }
-        }
-        return { data, contentType, fileName };
-      } finally {
-        clearTimeout(timer);
+        if (/^\s*(<!doctype html|<html)/i.test(text)) throw new WebCenterError("WebCenter returned a web page instead of the file. If your site uses single sign-on, set the SSO instance ID.");
       }
+      const cd = res.headers.get("content-disposition") || "";
+      const m = cd.match(/filename\*=UTF-8''([^;]+)/i) || cd.match(/filename="?([^";]+)"?/i);
+      let fileName: string | undefined;
+      if (m) {
+        try { fileName = decodeURIComponent(m[1]); } catch { fileName = m[1]; }
+      }
+      return { data, contentType, fileName };
     });
   }
 

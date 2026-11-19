@@ -1,3 +1,9 @@
+## Esko WebCenter MCP 1.1.0
+
+**One WebCenter session instead of one per request.** Each request used to sign in and out on its own, and requests that failed on WebCenter's side could leave sessions open. Those count toward your 5-session limit and cause "error 004". Now all requests share one session, which closes after 90 seconds of inactivity and when Claude stops the extension. If a session expires, it reopens automatically. If your site doesn't support shared sessions, it falls back to the old behaviour.
+
+The error 004 message now explains that you need to log out of WebCenter in the browser (closing the tab isn't enough), or wait about 30 minutes.
+
 ## Esko WebCenter MCP 1.0.0
 
 First release for engineers. Read-only: nothing in WebCenter can be changed through it.

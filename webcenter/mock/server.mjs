@@ -259,6 +259,11 @@ const handlers = {
   },
 };
 
+// Shared sessions opened with OpenSession.jsp (WebCenter allows 5 per user)
+const sessions = new Set();
+const MAX_SESSIONS = 5;
+export function expireAllSessions() { sessions.clear(); }
+
 const TINY_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 
 // ---- server ----------------------------------------------------------------
@@ -272,16 +277,43 @@ export function createMockServer() {
     const pageName = q.page.slice(BASE_PATH.length);
     const handler = handlers[pageName];
     const send = (status, text, type = "text/xml; charset=UTF-8") => { res.writeHead(status, { "Content-Type": type }); res.end(text); };
+    // Test hook: how many shared sessions are open
+    if (pageName === "__sessions") return send(200, JSON.stringify({ open: sessions.size }), "application/json");
+    if (pageName === "__expire") { sessions.clear(); return send(200, "{}", "application/json"); }
+    const credsOk = () => {
+      const user = (q.get("username") || "").toUpperCase();
+      return (user === MOCK_USER || user === "SSOUSER" || user === "NOSESSION") && q.get("password") === MOCK_PASS_B64;
+    };
+    const cookieId = ((req.headers["cookie"] || "").match(/JSESSIONID=([^;]+)/) || [])[1];
+    const inSession = cookieId && sessions.has(cookieId);
+
+    if (pageName === "OpenSession.jsp") {
+      if ((q.get("username") || "").toUpperCase() === "NOSESSION") return send(404, "<html><body>404 Not Found</body></html>", "text/html");
+      if ((q.get("username") || "").toUpperCase() === "SSOUSER" && !q.get("ssoiid")) return send(200, "<html><head><title>Sign in</title></head><body>SAML login portal</body></html>", "text/html");
+      if (!credsOk() && req.headers["authorization"] !== "Bearer mock-token") return send(200, err("001", "User login failed"));
+      if (sessions.size >= MAX_SESSIONS) return send(200, err("004", "The maximum number of open sessions for the user reached"));
+      const id = "MOCK" + Math.random().toString(16).slice(2).toUpperCase();
+      sessions.add(id);
+      res.writeHead(200, { "Content-Type": "text/xml; charset=UTF-8", "Set-Cookie": [`JSESSIONID=${id}; Path=/WebCenter; HttpOnly`, "AWSALB=mock-lb; Path=/"] });
+      return res.end(`<session><sessionID>${id}</sessionID><logged_in_userID>${users[0].id}</logged_in_userID><logged_in_loginID>abc</logged_in_loginID></session>`);
+    }
+    if (pageName === "CloseSession.jsp") {
+      if (!inSession) return send(200, err("001", "User login failed"));
+      sessions.delete(cookieId);
+      return send(200, `<session_closed><sessionID>${cookieId}</sessionID><logged_off_userID>${users[0].id}</logged_off_userID></session_closed>`);
+    }
+
     if (!handler) return send(404, "<html><body>404 Not Found</body></html>", "text/html");
     if (pageName === "GetWebCenterAPI.jsp") return send(200, handler(q));
 
-    // Authentication: OAuth bearer token, or username + base64 password
+    // Authentication: shared session cookie, OAuth bearer token, or username + base64 password
     const auth = req.headers["authorization"] || "";
     const tokenOk = auth === "Bearer mock-token";
-    if (!tokenOk) {
+    if (cookieId && !inSession && !q.get("username") && !tokenOk) return send(200, err("001", "User login failed")); // expired session
+    if (!tokenOk && !inSession) {
       const user = (q.get("username") || "").toUpperCase();
       if (user === "SSOUSER" && !q.get("ssoiid")) return send(200, "<html><head><title>Sign in</title></head><body>SAML login portal</body></html>", "text/html");
-      if (user !== MOCK_USER && user !== "SSOUSER") return send(200, err("001", "User login failed"));
+      if (user !== MOCK_USER && user !== "SSOUSER" && user !== "NOSESSION") return send(200, err("001", "User login failed"));
       if (q.get("password") !== MOCK_PASS_B64) return send(200, err("001", "User login failed"));
     }
     try {

@@ -46,7 +46,7 @@ Install the new `.mcpb` the same way. It replaces the old version.
 | Message | Fix |
 |---|---|
 | `WebCenter error 001: User login failed` | Wrong username or password. Re-enter them in Settings → Extensions → Esko WebCenter. |
-| `error 004 … maximum of 5 open WebCenter sessions` | Close some WebCenter browser tabs, or wait a few minutes. |
+| `error 004 … maximum of 5 open WebCenter sessions` | Log out of WebCenter in your browser (closing the tab isn't enough), or wait about 30 minutes for old sessions to time out. The extension itself uses only one session. |
 | `error 005 … privileges` | Your WebCenter account can't see that. Ask a WebCenter admin. |
 | `returned a web page instead of SDK data` | Single sign-on is involved. Ask IT for the SSO instance ID. |
 | `Live WebCenter calls are switched off` | Turn on "Allow live WebCenter" in the extension settings. |
