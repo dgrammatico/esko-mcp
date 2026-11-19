@@ -9,7 +9,7 @@ MCP servers that connect Claude to Anchor Bay Packaging's Esko systems.
 ## Install
 
 - **Claude Desktop (each engineer):** download `esko-webcenter-<version>.mcpb` from [Releases](../../releases) and follow [docs/INSTALL-WebCenter.md](docs/INSTALL-WebCenter.md).
-- **Microsoft 365 Copilot (IT, once):** host `esko-webcenter-remote-<version>.zip` on a Windows VM and publish a Copilot Studio agent by following [docs/COPILOT-SETUP.md](docs/COPILOT-SETUP.md).
+- **Microsoft 365 Copilot (IT, once):** host the remote edition on Azure Container Apps (free tier) or a Windows VM, then publish a Copilot Studio agent, by following [docs/COPILOT-SETUP.md](docs/COPILOT-SETUP.md). The scripts are in `esko-webcenter-remote-<version>.zip`.
 
 ## Develop
 
@@ -21,7 +21,7 @@ npm test          # end-to-end checks against the built-in mock WebCenter
 npm run package   # -> dist/esko-webcenter-<version>.mcpb
 ```
 
-CI runs build, test and package on every push to `webcenter/`. Pushing a tag like `webcenter-v1.0.1` publishes a GitHub release with the `.mcpb` attached.
+CI runs build, test and package on every push to `webcenter/`, and publishes the remote-edition container to `ghcr.io/dgrammatico/esko-webcenter-mcp` (private). Pushing a tag like `webcenter-v1.2.1` publishes a GitHub release with the `.mcpb` and the remote bundle attached, and tags the image `1.2.1` and `latest`.
 
 ## Not in this repo
 

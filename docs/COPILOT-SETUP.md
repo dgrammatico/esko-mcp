@@ -6,7 +6,7 @@ This puts the read-only WebCenter tools into the Microsoft 365 Copilot app (Copi
 Copilot app ──(user signs in with their Microsoft work account)──► Copilot Studio agent
                                                                         │  HTTPS + Entra access token
                                                                         ▼
-                                            Azure VM: https://<vm-dns-name>/mcp  (this server, read-only)
+                         This server, read-only: Azure Container Apps (recommended, free tier) or a Windows VM
                                                                         │  WebCenter SDK, one service account
                                                                         ▼
                                                      https://abp.esko-saas.com/WebCenter/
@@ -17,14 +17,15 @@ Copilot app ──(user signs in with their Microsoft work account)──► Cop
 - **WebCenter:** the server makes its WebCenter calls with one service account, so everyone sees what that account can see. Your WebCenter is 25.07, and per-user WebCenter sign-in for SDK integrations needs 26.07 or later. See [Later: per-user WebCenter sign-in](#later-per-user-webcenter-sign-in).
 - **Audit log:** every tool call is logged on the VM with the person's name. Arguments and tokens are never logged.
 
-Allow about an hour for the whole setup. There are six parts:
+Allow about an hour for the whole setup. There are five parts:
 
 1. [WebCenter service account](#1-webcenter-service-account)
-2. [Azure VM networking](#2-azure-vm-dns-name-and-ports)
-3. [Entra app registration](#3-entra-app-registration)
-4. [Install the server on the VM](#4-install-the-server-on-the-vm)
-5. [Copilot Studio agent](#5-copilot-studio-agent)
-6. [Billing for Copilot Chat users](#6-billing-for-copilot-chat-users)
+2. [Entra app registration](#2-entra-app-registration)
+3. [Host the server](#3-host-the-server): **[A. Azure Container Apps](#a-azure-container-apps-recommended)** (free tier, nothing to maintain) or [B. Windows VM](#b-windows-vm)
+4. [Copilot Studio agent](#4-copilot-studio-agent)
+5. [Billing for Copilot Chat users](#5-billing-for-copilot-chat-users)
+
+In the steps below, `<server-url>` is the address the hosting step prints, e.g. `https://esko-webcenter-mcp.<region>.azurecontainerapps.io` or `https://abp-webcenter-mcp.eastus.cloudapp.azure.com`.
 
 ---
 
@@ -37,16 +38,7 @@ In WebCenter, go to **Admin → Users → New User** and create a dedicated user
 - **Admin rights:** leave it a normal user unless you need the user, group and characteristic tools. Those require admin rights in WebCenter. The server can't change anything either way, because only read-only SDK calls are allowed in code.
 - **Licence:** this account may use a WebCenter user licence.
 
-## 2. Azure VM: DNS name and ports
-
-In the Azure portal:
-
-1. Open the VM's **public IP address** resource. Under **Configuration**, set a **DNS name label**, e.g. `abp-webcenter-mcp`, then save. Your address becomes something like `abp-webcenter-mcp.eastus.cloudapp.azure.com`. This guide calls it `<vm-dns-name>`.
-2. Open the VM's **network security group**. Under **Inbound security rules**, add a rule allowing **TCP 443** from Any, and another allowing **TCP 80** from Any.
-   - **443** carries the actual traffic.
-   - **80** is only used to issue and renew the free HTTPS certificate, and to redirect to HTTPS.
-
-## 3. Entra app registration
+## 2. Entra app registration
 
 In the **Microsoft Entra admin center** (entra.microsoft.com), go to **App registrations → New registration**:
 
@@ -62,9 +54,57 @@ In the **Microsoft Entra admin center** (entra.microsoft.com), go to **App regis
    - Click **Grant admin consent**.
 6. **Restrict access (recommended):** go to **Enterprise applications → Esko WebCenter MCP → Properties** and set **Assignment required** to **Yes**. Then under **Users and groups**, add the engineers' group. Anyone not assigned can't sign in to the agent.
 
-You'll add a redirect URI from Copilot Studio in step 5.
+You'll add a redirect URI from Copilot Studio in step 4.
 
-## 4. Install the server on the VM
+## 3. Host the server
+
+Choose **one** option.
+
+### A. Azure Container Apps (recommended)
+
+This runs the server in your own Azure subscription with HTTPS built in. It scales to zero when nobody is using it, so typical use stays inside Azure's monthly free allowance: 180,000 vCPU-seconds, 360,000 GiB-seconds and 2 million requests. The first question after a quiet period takes a few seconds while it starts.
+
+You need two things:
+- **Azure CLI:** `az` on your PC (already installed on yours), or use **Azure Cloud Shell** in the Azure portal.
+- **A GitHub token:** the server image is published privately to GitHub's container registry by this repo's build. Create a token at **github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token (classic)**. Tick **only** `read:packages`, choose an expiry (e.g. 1 year), and copy it.
+
+Then deploy:
+
+1. **Run the script:** from the extracted `esko-webcenter-remote-<version>.zip`, run:
+   ```powershell
+   Set-ExecutionPolicy -Scope Process Bypass
+   .\deploy-containerapp.ps1 -TenantId <tenant-id> -Audience api://<client-id> -RegistryUsername <github-username>
+   ```
+2. **Answer the prompts:**
+   - Sign in to Azure if asked.
+   - Enter the `COPILOT_SVC` username and password.
+   - Paste the GitHub token.
+
+   The password and token are stored as Container Apps **secrets**.
+3. **Check the result:** the script creates the resource group `rg-esko-mcp`, the environment and the app, then checks it's answering. It ends with:
+   ```
+   MCP server URL for Copilot Studio:  https://esko-webcenter-mcp.<...>.azurecontainerapps.io/mcp
+   ```
+
+To keep running it:
+- **Logs and audit trail:** `az containerapp logs show -n esko-webcenter-mcp -g rg-esko-mcp --follow`
+- **Update to a new version:** `.\deploy-containerapp.ps1 -ImageOnly -Image ghcr.io/dgrammatico/esko-webcenter-mcp:<version>`
+- **Change settings or the password:** run the full command again.
+- **Budget alert:** set one in **Cost Management → Budgets** (e.g. $5/month). Azure doesn't cap spending automatically once usage goes past the free allowance.
+- **Remove it:** `az group delete -n rg-esko-mcp`
+
+### B. Windows VM
+
+Use this if you'd rather run it on a VM you already have.
+
+**Networking**, in the Azure portal:
+
+1. Open the VM's **public IP address** resource. Under **Configuration**, set a **DNS name label**, e.g. `abp-webcenter-mcp`, then save. Your address becomes something like `abp-webcenter-mcp.eastus.cloudapp.azure.com`. This guide calls it `<vm-dns-name>`.
+2. Open the VM's **network security group**. Under **Inbound security rules**, add a rule allowing **TCP 443** from Any, and another allowing **TCP 80** from Any.
+   - **443** carries the actual traffic.
+   - **80** is only used to issue and renew the free HTTPS certificate, and to redirect to HTTPS.
+
+**Install**:
 
 1. **Copy the bundle:** get `esko-webcenter-remote-<version>.zip` from the GitHub release. Copy it to the VM (copy and paste through Remote Desktop works) and extract it.
 2. **Run the installer:** open **PowerShell as Administrator** in the extracted folder and run:
@@ -91,7 +131,7 @@ What the installer sets up:
 **Updating:** extract the new zip and run the same `install.ps1` command again. Your settings are kept.
 **Uninstalling:** run `.\uninstall.ps1`, adding `-DeleteFiles` to also remove `C:\EskoMCP`.
 
-## 5. Copilot Studio agent
+## 4. Copilot Studio agent
 
 In **Copilot Studio** (copilotstudio.microsoft.com):
 
@@ -110,10 +150,10 @@ In **Copilot Studio** (copilotstudio.microsoft.com):
    |---|---|
    | Server name | Esko WebCenter |
    | Server description | Read-only access to Esko WebCenter projects, documents, ArtiosCAD design specs, approvals and users. |
-   | Server URL | `https://<vm-dns-name>/mcp` |
+   | Server URL | `<server-url>/mcp` |
    | Authentication | **OAuth 2.0**, type **Manual** |
-   | Client ID | the Application (client) ID from step 3 |
-   | Client secret | the secret Value from step 3 |
+   | Client ID | the Application (client) ID from step 2 |
+   | Client secret | the secret Value from step 2 |
    | Authorization URL | `https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/authorize` |
    | Token URL template | `https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token` |
    | Refresh URL | `https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token` |
@@ -128,7 +168,7 @@ In **Copilot Studio** (copilotstudio.microsoft.com):
 
 The first time an engineer uses the agent, Copilot asks them to sign in. After that it just works.
 
-## 6. Billing for Copilot Chat users
+## 5. Billing for Copilot Chat users
 
 Your engineers use the free Copilot Chat, without the paid Microsoft 365 Copilot licence. For them, conversations with a Copilot Studio agent are billed in **Copilot Credits**. Set this up in the **Microsoft 365 admin center** or the **Power Platform admin center** with one of these:
 
@@ -141,23 +181,21 @@ Turn on usage alerts so there are no surprises. Users with a paid Microsoft 365 
 
 | Symptom | Check |
 |---|---|
-| `https://<vm-dns-name>/healthz` doesn't load | Azure NSG allows 443 and 80; the DNS label resolves to the VM; see `C:\EskoMCP\logs\caddy.log` |
-| Copilot Studio says the connection failed | Callback URL added in Entra (step 5.3); scopes exactly `api://<client-id>/access_as_user offline_access`; admin consent granted |
-| "Microsoft sign-in token rejected (ERR_JWT_CLAIM_VALIDATION_FAILED)" in a tool error | `-Audience` matches the Application ID URI; rerun `install.ps1 ... -Reconfigure` if needed |
-| A user can't sign in | They're assigned to the enterprise app (step 3.6) |
-| `WebCenter error 001` | The service account's password changed: rerun `install.ps1 ... -Reconfigure` |
+| `<server-url>/healthz` doesn't load | Container Apps: `az containerapp logs show -n esko-webcenter-mcp -g rg-esko-mcp --tail 50`. VM: NSG allows 443 and 80, the DNS label resolves to the VM, and see `C:\EskoMCP\logs\caddy.log` |
+| Copilot Studio says the connection failed | Callback URL added in Entra (step 4.3); scopes exactly `api://<client-id>/access_as_user offline_access`; admin consent granted |
+| "Microsoft sign-in token rejected (ERR_JWT_CLAIM_VALIDATION_FAILED)" in a tool error | `-Audience` matches the Application ID URI; rerun the deploy/install command (VM: add `-Reconfigure`) |
+| A user can't sign in | They're assigned to the enterprise app (step 2.6) |
+| `WebCenter error 001` | The service account's password changed: rerun the deploy command (VM: `install.ps1 ... -Reconfigure`) |
 | `WebCenter error 004` | Too many sessions for the service account; the server uses only one, so check nothing else logs in as `COPILOT_SVC` |
-| Anything else | `C:\EskoMCP\logs\server.log`; ask the agent to run `webcenter_diagnostics_raw_response` with no page for a connection report |
+| Container app won't start: "unauthorized" pulling the image | The GitHub token expired or lacks `read:packages`: rerun the deploy command with a new token |
+| Anything else | Server logs (see above); ask the agent to run `webcenter_diagnostics_raw_response` with no page for a connection report |
 
 ## Later: per-user WebCenter sign-in
 
 Once Esko moves your site to WebCenter **26.07 or later** and enables the **OAuth SSO plugin for SDK authentication**, each engineer can sign in to WebCenter as themselves. They'd then see only what their own account can see, and the service account is no longer needed:
 
 1. **WebCenter:** in the new OAuth admin page, create a client and add Copilot Studio's callback URL as its redirect URL.
-2. **The VM:** rerun the installer in OAuth mode:
-   ```powershell
-   .\install.ps1 -Hostname <vm-dns-name> -AuthMode oauth -Reconfigure
-   ```
+2. **The server:** redeploy in OAuth mode, with `.\deploy-containerapp.ps1 -AuthMode oauth -RegistryUsername <github-username>` (Container Apps) or `.\install.ps1 -Hostname <vm-dns-name> -AuthMode oauth -Reconfigure` (VM).
 3. **Copilot Studio:** change the tool's OAuth settings to WebCenter's client ID, secret and authorization/token URLs.
 
 The server already supports this mode (`MCP_AUTH_MODE=oauth`), and it's covered by the automated tests.

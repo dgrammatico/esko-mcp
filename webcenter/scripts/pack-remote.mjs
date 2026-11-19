@@ -15,18 +15,25 @@ rmSync(stage, { recursive: true, force: true });
 mkdirSync(stage, { recursive: true });
 copyFileSync(join(root, "server", "http.js"), join(stage, "http.js"));
 for (const f of ["install.ps1", "uninstall.ps1"]) copyFileSync(join(root, "deploy", "windows", f), join(stage, f));
+copyFileSync(join(root, "deploy", "azure-container-apps", "deploy.ps1"), join(stage, "deploy-containerapp.ps1"));
 writeFileSync(join(stage, "README.txt"), [
   `Esko WebCenter MCP server ${version} - remote (hosted) edition for Copilot Studio / Microsoft 365 Copilot`,
   "",
-  "On the Windows VM, in PowerShell as Administrator, from this folder:",
+  "Two ways to host it. Full guide: docs/COPILOT-SETUP.md in the esko-mcp repository.",
+  "",
+  "OPTION A - Azure Container Apps (free tier, no server to maintain). From any PC with the Azure CLI:",
+  "",
+  "  Set-ExecutionPolicy -Scope Process Bypass",
+  "  .\\deploy-containerapp.ps1 -TenantId <entra-tenant-id> -Audience api://<app-client-id> -RegistryUsername <github-user>",
+  "",
+  "OPTION B - Windows VM. On the VM, in PowerShell as Administrator, from this folder:",
   "",
   "  Set-ExecutionPolicy -Scope Process Bypass",
   "  .\\install.ps1 -Hostname <your-vm-dns-name> -TenantId <entra-tenant-id> -Audience api://<app-client-id>",
   "",
   "It asks for the WebCenter service account's username and password, which are stored only on this VM.",
   "",
-  "To update later, extract the new zip and run the same command again (settings are kept).",
-  "Full guide: docs/COPILOT-SETUP.md in the esko-mcp repository.",
+  "To update the VM later, extract the new zip and run the same command again (settings are kept).",
   "",
 ].join("\r\n"));
 const out = join(root, "dist", `${name}.zip`);
