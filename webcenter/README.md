@@ -22,7 +22,7 @@ End-user install guide: [../docs/INSTALL-WebCenter.md](../docs/INSTALL-WebCenter
 | `webcenter_browse_characteristics` | GetCharacteristicsTree | The project classification tree |
 | `webcenter_find_projects_by_characteristic` | GetProjectsFromCharacteristics | Projects tagged with a characteristic |
 | `webcenter_search` | Search | Saved or new searches (search index) |
-| `webcenter_diagnostics_raw_response` | any allowlisted call | Troubleshooting: raw XML for field-name checks |
+| `webcenter_diagnostics_raw_response` | any allowlisted call | Troubleshooting: with no page, connection/session status; with a page, raw XML for field-name checks |
 
 ## Safety
 

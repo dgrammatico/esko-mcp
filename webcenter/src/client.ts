@@ -156,6 +156,8 @@ export class WebCenterClient {
   private opening?: Promise<SessionState | undefined>;
   private sessionUnsupported = false;
   private idleTimer?: NodeJS.Timeout;
+  /** Counters for the diagnostics tool. */
+  readonly stats = { sessionsOpened: 0, sessionsClosed: 0, sessionReopens: 0, callsInSession: 0, callsPerCall: 0, fallbackReason: undefined as string | undefined, lastOpenedAt: undefined as string | undefined, lastClosedAt: undefined as string | undefined };
 
   constructor(public config: WebCenterConfig) {
     this.limiter = new Limiter(config.maxConcurrent);
@@ -166,10 +168,37 @@ export class WebCenterClient {
     return new URL(path.replace(/^\//, ""), this.config.baseUrl).toString();
   }
 
-  /** "session" if calls share one WebCenter session, "per-call" if each call logs in and out. */
-  get sessionModeInUse(): "session" | "per-call" | "not yet known" {
-    if (this.config.sessionMode === "per-call" || this.sessionUnsupported) return "per-call";
-    return this.session ? "session" : "not yet known";
+  /** Current session status, for the diagnostics tool. Opens the shared session if none is open yet. */
+  async sessionStatus() {
+    let openError: string | undefined;
+    try {
+      await this.ensureSession();
+    } catch (e: any) {
+      openError = e?.message || String(e);
+    }
+    const method =
+      this.config.sessionMode === "per-call" ? "per-call login (forced by WEBCENTER_SESSION_MODE)"
+      : this.sessionUnsupported ? "per-call login (fallback: shared sessions unavailable)"
+      : this.session ? "shared session (OpenSession.jsp / CloseSession.jsp)"
+      : "unknown (couldn't open a session)";
+    return {
+      method,
+      session_open_now: !!this.session,
+      session_cookie_names: this.session ? [...this.session.cookies.keys()] : undefined,
+      configured_mode: this.config.sessionMode,
+      idle_close_after_seconds: Math.round(this.config.sessionIdleMs / 1000),
+      fallback_reason: this.stats.fallbackReason,
+      open_error: openError,
+      counters_since_start: {
+        sessions_opened: this.stats.sessionsOpened,
+        sessions_closed: this.stats.sessionsClosed,
+        session_reopens_after_expiry: this.stats.sessionReopens,
+        calls_in_shared_session: this.stats.callsInSession,
+        calls_with_per_call_login: this.stats.callsPerCall,
+      },
+      last_opened_at: this.stats.lastOpenedAt,
+      last_closed_at: this.stats.lastClosedAt,
+    };
   }
 
   private checkAllowed(page: string) {
@@ -235,6 +264,7 @@ export class WebCenterClient {
     const fallback = (why: string) => {
       if (this.config.sessionMode === "session") throw new WebCenterError(`Couldn't open a WebCenter session: ${why}`);
       this.sessionUnsupported = true;
+      this.stats.fallbackReason = why;
       console.error(`WebCenter: shared sessions unavailable (${why}); each call will log in and out.`);
       return undefined;
     };
@@ -268,6 +298,8 @@ export class WebCenterClient {
     if (id && !cookies.has("JSESSIONID")) cookies.set("JSESSIONID", id);
     if (!cookies.size) return fallback("no session ID returned");
     this.session = { id, cookies };
+    this.stats.sessionsOpened++;
+    this.stats.lastOpenedAt = new Date().toISOString();
     this.touch();
     return this.session;
   }
@@ -288,7 +320,11 @@ export class WebCenterClient {
       const { body, headers } = this.buildRequest({}, false);
       headers["Cookie"] = [...s.cookies].map(([k, v]) => `${k}=${v}`).join("; ");
       const res = await this.fetchWithTimeout("CloseSession.jsp", body, headers, 10000);
-      await res.arrayBuffer();
+      const text = Buffer.from(await res.arrayBuffer()).toString("utf8");
+      if (/<session_closed>/i.test(text)) {
+        this.stats.sessionsClosed++;
+        this.stats.lastClosedAt = new Date().toISOString();
+      }
     } catch {
       /* the server will time the session out */
     }
@@ -306,9 +342,12 @@ export class WebCenterClient {
       const data = Buffer.from(await res.arrayBuffer());
       if (s && attempt === 0 && looksLikeLostSession(res, data)) {
         if (this.session === s) this.session = undefined; // expired or invalidated: open a new one and retry
+        this.stats.sessionReopens++;
         continue;
       }
       if (s) this.touch();
+      if (s) this.stats.callsInSession++;
+      else this.stats.callsPerCall++;
       return { res, data };
     }
     throw new WebCenterError("WebCenter session could not be re-established.");

@@ -8,6 +8,7 @@ import { join, extname, basename } from "node:path";
 import { WebCenterClient, WebCenterError, READ_ONLY_PAGES, arr, str, date } from "./client.js";
 import { Lookup } from "./lookup.js";
 import { ok, fail, READ_ONLY, attrValue } from "./tools.js";
+import { SERVER_VERSION } from "./version.js";
 
 // ---- helpers -----------------------------------------------------------------
 
@@ -291,10 +292,11 @@ export function registerEngineeringTools(server: McpServer, wc: WebCenterClient,
     {
       title: "Diagnostics: raw WebCenter response",
       description:
-        "Troubleshooting only: return the raw XML/JSON WebCenter sends for one of this server's read-only SDK calls, so field names can be checked against what the tools show. " +
+        "Troubleshooting only. Leave page empty to see how this server is connected to WebCenter: shared session or per-call logins, whether a session is open, and session counters. " +
+        "Give a page to see the raw XML/JSON WebCenter sends for one of this server's read-only SDK calls, so field names can be checked against what the tools show. " +
         "Only the read-only pages this server already uses are allowed. Prefer the regular tools for normal questions.",
       inputSchema: {
-        page: z.string().describe("e.g. GetDocumentList.jsp"),
+        page: z.string().optional().describe("e.g. GetDocumentList.jsp. Omit for the connection/session status."),
         params: z.record(z.string()).default({}).describe("SDK parameters (credentials are added automatically)."),
         max_chars: z.number().int().min(500).max(60000).default(15000),
       },
@@ -302,6 +304,9 @@ export function registerEngineeringTools(server: McpServer, wc: WebCenterClient,
     },
     async (a) => {
       try {
+        if (!a.page || a.page.toLowerCase() === "status") {
+          return ok({ webcenter: wc.config.baseUrl, server_version: SERVER_VERSION, ...(await wc.sessionStatus()) });
+        }
         if (!READ_ONLY_PAGES.has(a.page)) throw new WebCenterError(`Not allowed: ${a.page}. Allowed pages: ${[...READ_ONLY_PAGES].join(", ")}`);
         if (/Thumbnail|Download/i.test(a.page)) throw new WebCenterError("Binary pages can't be shown raw. Use webcenter_get_thumbnail or webcenter_download_document.");
         const lower = Object.fromEntries(Object.entries(a.params).filter(([k]) => !/^(username|password|ssoiid)$/i.test(k)));

@@ -186,6 +186,8 @@ try {
   check("session closed after idle timeout", (await openSessions()) === 0, `open sessions: ${await openSessions()}`);
   r = await call(sess, "webcenter_get_user", { username: "MOCKUSER" });
   check("session reopens on next call", !r.isError && (await openSessions()) === 1, r.text);
+  r = await call(sess, "webcenter_diagnostics_raw_response", {});
+  check("diagnostics status reports shared session + counters", /shared session/.test(r.json?.method || "") && r.json?.session_open_now === true && r.json?.counters_since_start?.sessions_opened === 2 && r.json.counters_since_start.sessions_closed === 1 && r.json.server_version === "1.1.1", r.text);
   await sess.close();
   await new Promise((r) => setTimeout(r, 800));
   check("session closed when the server shuts down", (await openSessions()) === 0, `open sessions: ${await openSessions()}`);
@@ -218,6 +220,8 @@ try {
   const nos = await connect({ ...base, WEBCENTER_USERNAME: "NOSESSION" });
   r = await call(nos, "webcenter_find_projects", {});
   check("falls back to per-call login when OpenSession is unavailable", !r.isError && r.json?.projects?.length === 3, r.text);
+  r = await call(nos, "webcenter_diagnostics_raw_response", { page: "status" });
+  check("diagnostics status reports the fallback and why", /fallback/.test(r.json?.method || "") && /not found/.test(r.json?.fallback_reason || "") && r.json?.counters_since_start?.calls_with_per_call_login >= 1, r.text);
   await nos.close();
 
   // Built-in mock mode (WEBCENTER_BASE_URL=mock): no separate mock process, no credentials

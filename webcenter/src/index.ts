@@ -7,6 +7,7 @@ import { WebCenterClient, loadConfig } from "./client.js";
 import { registerTools } from "./tools.js";
 import { registerEngineeringTools } from "./tools-engineering.js";
 import { Lookup } from "./lookup.js";
+import { SERVER_VERSION } from "./version.js";
 
 // WEBCENTER_BASE_URL=mock starts the built-in mock WebCenter, so the server can be tried with no real site.
 let mockNote = "";
@@ -25,7 +26,7 @@ const config = loadConfig();
 const client = new WebCenterClient(config);
 
 const server = new McpServer(
-  { name: "webcenter", version: "1.1.0" },
+  { name: "webcenter", version: SERVER_VERSION },
   {
     instructions:
       "Read-only access to Esko WebCenter (packaging projects, documents including ArtiosCAD designs, approvals, tasks and users). " +
