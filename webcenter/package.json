@@ -1,15 +1,16 @@
 {
   "name": "esko-webcenter-mcp",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Read-only MCP server for Esko WebCenter (Claude Desktop extension)",
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit && esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --outfile=server/index.js --banner:js=\"import{createRequire}from'module';const require=createRequire(import.meta.url);\" && esbuild src/http.ts --bundle --platform=node --format=esm --target=node20 --outfile=server/http.js --banner:js=\"import{createRequire}from'module';const require=createRequire(import.meta.url);\"",
     "mock": "node mock/server.mjs",
-    "test": "node test/run.mjs && node test/http.mjs",
+    "test": "node test/run.mjs && node test/http.mjs && node test/agent.mjs",
     "package": "npm run build && node scripts/pack.mjs",
     "serve": "node server/http.js",
-    "package-remote": "npm run build && node scripts/pack-remote.mjs"
+    "package-remote": "npm run build && node scripts/pack-remote.mjs",
+    "package-agent": "node scripts/pack-agent.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

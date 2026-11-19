@@ -16,8 +16,12 @@ mkdirSync(stage, { recursive: true });
 copyFileSync(join(root, "server", "http.js"), join(stage, "http.js"));
 for (const f of ["install.ps1", "uninstall.ps1"]) copyFileSync(join(root, "deploy", "windows", f), join(stage, f));
 copyFileSync(join(root, "deploy", "azure-container-apps", "deploy.ps1"), join(stage, "deploy-containerapp.ps1"));
+// Copilot declarative agent: app package template + build script
+mkdirSync(join(stage, "copilot-agent", "appPackage"), { recursive: true });
+for (const f of ["build-agent-package.ps1", "README.md"]) copyFileSync(join(root, "copilot-agent", f), join(stage, "copilot-agent", f));
+for (const f of ["manifest.json", "declarativeAgent.json", "ai-plugin.json", "color.png", "outline.png"]) copyFileSync(join(root, "copilot-agent", "appPackage", f), join(stage, "copilot-agent", "appPackage", f));
 writeFileSync(join(stage, "README.txt"), [
-  `Esko WebCenter MCP server ${version} - remote (hosted) edition for Copilot Studio / Microsoft 365 Copilot`,
+  `Esko WebCenter MCP server ${version} - remote (hosted) edition for Microsoft 365 Copilot`,
   "",
   "Two ways to host it. Full guide: docs/COPILOT-SETUP.md in the esko-mcp repository.",
   "",
@@ -34,6 +38,12 @@ writeFileSync(join(stage, "README.txt"), [
   "It asks for the WebCenter service account's username and password, which are stored only on this VM.",
   "",
   "To update the VM later, extract the new zip and run the same command again (settings are kept).",
+  "",
+  "THE COPILOT AGENT - the copilot-agent folder builds the 'WebCenter' agent for Microsoft 365 Copilot",
+  "(declarative agent, no usage charges for Copilot Chat users). See docs/COPILOT-SETUP.md step 4A:",
+  "",
+  "  cd copilot-agent",
+  "  .\\build-agent-package.ps1 -ServerUrl https://<your-server> -AuthReferenceId <Entra SSO registration ID>",
   "",
 ].join("\r\n"));
 const out = join(root, "dist", `${name}.zip`);

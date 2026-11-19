@@ -9,7 +9,7 @@ MCP servers that connect Claude to Anchor Bay Packaging's Esko systems.
 ## Install
 
 - **Claude Desktop (each engineer):** download `esko-webcenter-<version>.mcpb` from [Releases](../../releases) and follow [docs/INSTALL-WebCenter.md](docs/INSTALL-WebCenter.md).
-- **Microsoft 365 Copilot (IT, once):** host the remote edition on Azure Container Apps (free tier) or a Windows VM, then publish a Copilot Studio agent, by following [docs/COPILOT-SETUP.md](docs/COPILOT-SETUP.md). The scripts are in `esko-webcenter-remote-<version>.zip`.
+- **Microsoft 365 Copilot (IT, once):** host the remote edition on Azure Container Apps (free tier) or a Windows VM, then upload the **WebCenter** declarative agent (no usage charges), by following [docs/COPILOT-SETUP.md](docs/COPILOT-SETUP.md). The scripts are in `esko-webcenter-remote-<version>.zip`.
 
 ## Develop
 

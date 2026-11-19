@@ -1,3 +1,17 @@
+## Esko WebCenter MCP 1.2.1
+
+**New: a Copilot agent with no usage charges.** The remote zip now has a `copilot-agent` folder that builds a **declarative agent** called **WebCenter** for the Microsoft 365 Copilot app.
+- It uses Copilot's own model and calls the hosted server through an MCP plugin.
+- Engineers are signed in automatically with Entra single sign-on.
+- It needs no Copilot Studio and no billing setup.
+- One script, `build-agent-package.ps1`, builds the zip that you upload in the Microsoft 365 admin center.
+- See `COPILOT-SETUP.md`, step 4A. The Copilot Studio route is still documented as 4B.
+
+Other changes:
+- `deploy-containerapp.ps1 -AddAudience <uri>` adds an accepted token audience without redeploying or re-entering secrets.
+- `-Audience` (both scripts) now accepts a comma-separated list.
+- No server code changes. The server already accepted several audiences and v1 tokens; tests now cover the agent's token shape.
+
 ## Esko WebCenter MCP 1.2.0
 
 **New: Microsoft 365 Copilot edition.** A hosted version of the server for Copilot Studio and the Microsoft 365 Copilot app, with two ways to host it:

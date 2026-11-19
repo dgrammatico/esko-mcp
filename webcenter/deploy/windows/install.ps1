@@ -156,8 +156,12 @@ if ((Test-Path $configFile) -and -not $Reconfigure) {
   if ($OAuthIssuer) { $lines += "WEBCENTER_OAUTH_ISSUER=$OAuthIssuer" }
   if ($AuthMode -eq "entra") {
     # Accept both the Application ID URI and the bare client ID as the token audience.
-    $aud = @($Audience)
-    if ($Audience -match '^api://([0-9a-fA-F-]{36})$') { $aud += $Matches[1] }
+    $aud = New-Object System.Collections.Generic.List[string]
+    foreach ($a in ($Audience -split ",")) {
+      $a = $a.Trim(); if (-not $a) { continue }
+      if (-not $aud.Contains($a)) { $aud.Add($a) }
+      if ($a -match '^api://([0-9a-fA-F-]{36})$' -and -not $aud.Contains($Matches[1])) { $aud.Add($Matches[1]) }
+    }
     $lines += "ENTRA_TENANT_ID=$TenantId", ("ENTRA_AUDIENCE=" + ($aud -join ","))
     if ($RequiredRole) { $lines += "ENTRA_REQUIRED_ROLE=$RequiredRole" }
   }

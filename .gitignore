@@ -7,3 +7,5 @@ webcenter/server/
 *.log
 .DS_Store
 Thumbs.db
+webcenter/copilot-agent/agent-settings.json
+webcenter/copilot-agent/*.zip

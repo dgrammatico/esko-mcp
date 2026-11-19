@@ -26,6 +26,11 @@
 
 .EXAMPLE
   .\deploy.ps1 -ImageOnly -Image ghcr.io/dgrammatico/esko-webcenter-mcp:1.2.1
+
+.EXAMPLE
+  .\deploy.ps1 -AddAudience api://auth-<registration-guid>/<client-id>
+  Adds a token audience (e.g. the Application ID URI the Teams Developer Portal gives the Copilot agent's
+  Entra SSO registration) without touching anything else or asking for secrets.
 #>
 [CmdletBinding()]
 param(
@@ -42,6 +47,8 @@ param(
   [string]$AppName = "esko-webcenter-mcp",
   [string]$Subscription = "",
   [switch]$ImageOnly,
+  # Add one or more accepted token audiences (comma-separated) to the running app; nothing else changes.
+  [string]$AddAudience = "",
   # Print the container app spec (secrets masked) without signing in to Azure or changing anything.
   [switch]$PrintSpec
 )
@@ -85,6 +92,17 @@ if ($ImageOnly) {
   Invoke-Az containerapp update -n $AppName -g $ResourceGroup --image $Image --only-show-errors -o none | Out-Null
   $fqdn = Invoke-Az containerapp show -n $AppName -g $ResourceGroup --query properties.configuration.ingress.fqdn -o tsv
   Ok "Done: https://$fqdn/mcp"
+  return
+}
+
+# ---- add token audience(s) only ---------------------------------------------------------------
+if ($AddAudience) {
+  Step "Adding token audience to $AppName"
+  $cur = Invoke-Az containerapp show -n $AppName -g $ResourceGroup --query "properties.template.containers[0].env[?name=='ENTRA_AUDIENCE'].value | [0]" -o tsv
+  $list = New-Object System.Collections.Generic.List[string]
+  foreach ($a in (($cur + "," + $AddAudience) -split ",")) { $a = $a.Trim(); if ($a -and -not $list.Contains($a)) { $list.Add($a) } }
+  Invoke-Az containerapp update -n $AppName -g $ResourceGroup --set-env-vars ("ENTRA_AUDIENCE=" + ($list -join ",")) --only-show-errors -o none | Out-Null
+  Ok "Accepted audiences now: $($list -join ', ')"
   return
 }
 
@@ -141,8 +159,12 @@ $envVars = @(
   @{ name = "MCP_PUBLIC_URL"; value = "https://$fqdn" }
 )
 if ($AuthMode -eq "entra") {
-  $aud = @($Audience)
-  if ($Audience -match '^api://([0-9a-fA-F-]{36})$') { $aud += $Matches[1] }
+  $aud = New-Object System.Collections.Generic.List[string]
+  foreach ($a in ($Audience -split ",")) {
+    $a = $a.Trim(); if (-not $a) { continue }
+    if (-not $aud.Contains($a)) { $aud.Add($a) }
+    if ($a -match '^api://([0-9a-fA-F-]{36})$' -and -not $aud.Contains($Matches[1])) { $aud.Add($Matches[1]) }
+  }
   $envVars += @{ name = "ENTRA_TENANT_ID"; value = $TenantId }, @{ name = "ENTRA_AUDIENCE"; value = ($aud -join ",") }
   if ($RequiredRole) { $envVars += @{ name = "ENTRA_REQUIRED_ROLE"; value = $RequiredRole } }
 }
@@ -255,7 +277,8 @@ if ($health) { Ok "Server is up: version $($health.version), auth mode $($health
 else { Warn "https://$fqdn/healthz isn't answering yet. Check: az containerapp logs show -n $AppName -g $ResourceGroup --tail 50" }
 
 Write-Host ""
-Write-Host "MCP server URL for Copilot Studio:  https://$fqdn/mcp" -ForegroundColor Green
+Write-Host "MCP server URL:  https://$fqdn/mcp" -ForegroundColor Green
+Write-Host "Next: build the Copilot agent with copilot-agent\build-agent-package.ps1 -ServerUrl https://$fqdn (see docs/COPILOT-SETUP.md)." 
 if ($apiKey) { Write-Host "API key (shown once):  $apiKey   (header: x-api-key)" -ForegroundColor Yellow }
 Write-Host "Logs and audit trail:  az containerapp logs show -n $AppName -g $ResourceGroup --follow"
 Write-Host "It scales to zero when idle; the first request after a quiet period takes a few seconds."

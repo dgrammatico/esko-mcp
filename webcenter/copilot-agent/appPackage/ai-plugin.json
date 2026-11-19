@@ -1,0 +1,24 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/copilot/plugin/v2.4/schema.json",
+  "schema_version": "v2.4",
+  "name_for_human": "Esko WebCenter",
+  "namespace": "webcenter",
+  "description_for_human": "Read-only lookups of Esko WebCenter projects, design specs and documents.",
+  "description_for_model": "Read-only access to Esko WebCenter, the company's packaging project system: projects, their attributes (design specs such as style, board grade, flute and dimensions), status, managers, documents including ArtiosCAD designs, document versions and history, users, groups and to-do lists. Use it whenever the user asks about a WebCenter project, a packaging design or its specs. It cannot change data.",
+  "functions": [],
+  "runtimes": [
+    {
+      "type": "RemoteMCPServer",
+      "auth": {
+        "type": "OAuthPluginVault",
+        "reference_id": "${{AUTH_REFERENCE_ID}}"
+      },
+      "spec": {
+        "url": "${{MCP_SERVER_URL}}"
+      },
+      "run_for_functions": [
+        "*"
+      ]
+    }
+  ]
+}

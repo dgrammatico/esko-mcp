@@ -162,6 +162,15 @@ try {
   check("entra: required app role missing -> 403", r.status === 403, String(r.status));
   r = await post(`${ER}/mcp`, { Authorization: `Bearer ${await mint({ roles: ["WebCenter.Read"] })}` });
   check("entra: required app role present -> allowed", r.status === 200, `${r.status} ${await r.text()}`);
+
+  // Copilot declarative agent (Entra SSO): token audience is the extra Application ID URI the Teams Developer
+  // Portal assigns, and token-store tokens may be v1 (sts.windows.net issuer).
+  const SSO_AUD = "api://auth-0f1e2d3c-aaaa-bbbb-cccc-1234567890ab/2d7e2ed2-1936-48f2-8228-ecc9529a4f4e";
+  const ES = await startServer(8818, { ...entraEnv, ENTRA_AUDIENCE: `${AUD},${SSO_AUD}`, ENTRA_ISSUER: `${ISSUER},https://sts.windows.net/${TENANT}/` });
+  r = await post(`${ES}/mcp`, { Authorization: `Bearer ${await mint({ scp: "access_as_user" }, { aud: SSO_AUD, iss: `https://sts.windows.net/${TENANT}/` })}` });
+  check("entra: Copilot agent SSO token (extra audience, v1 issuer) -> allowed", r.status === 200, `${r.status} ${await r.text()}`);
+  r = await post(`${ES}/mcp`, { Authorization: `Bearer ${await mint({}, { aud: AUD })}` });
+  check("entra: original audience still accepted alongside it", r.status === 200, String(r.status));
   jwksServer.close();
 
   // ---- Misconfiguration is refused at startup

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.21/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.21",
+  "version": "${{AGENT_VERSION}}",
+  "id": "${{TEAMS_APP_ID}}",
+  "developer": {
+    "name": "${{COMPANY_NAME}}",
+    "websiteUrl": "https://github.com/dgrammatico/esko-mcp",
+    "privacyUrl": "https://github.com/dgrammatico/esko-mcp",
+    "termsOfUseUrl": "https://github.com/dgrammatico/esko-mcp"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "name": {
+    "short": "WebCenter",
+    "full": "Esko WebCenter (read-only)"
+  },
+  "description": {
+    "short": "Look up Esko WebCenter projects, design specs and documents.",
+    "full": "Ask about Esko WebCenter projects in plain language: find a project by name or description, see its design specs (attributes), status, manager, documents and versions. Read-only: the agent can't change anything in WebCenter."
+  },
+  "accentColor": "#006E8C",
+  "copilotAgents": {
+    "declarativeAgents": [
+      {
+        "id": "eskoWebCenterAgent",
+        "file": "declarativeAgent.json"
+      }
+    ]
+  },
+  "permissions": [
+    "identity"
+  ],
+  "validDomains": [
+    "${{MCP_HOST}}"
+  ]
+}

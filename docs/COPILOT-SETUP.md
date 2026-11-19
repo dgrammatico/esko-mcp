@@ -3,7 +3,7 @@
 This puts the read-only WebCenter tools into the Microsoft 365 Copilot app (Copilot Chat) as an agent called **Esko WebCenter**. Engineers open Copilot, pick the agent, and ask things like *"give me the design specs for the crop excellence box."*
 
 ```
-Copilot app ──(user signs in with their Microsoft work account)──► Copilot Studio agent
+Copilot app ──(user signs in with their Microsoft work account)──► "WebCenter" agent (declarative agent)
                                                                         │  HTTPS + Entra access token
                                                                         ▼
                          This server, read-only: Azure Container Apps (recommended, free tier) or a Windows VM
@@ -17,13 +17,14 @@ Copilot app ──(user signs in with their Microsoft work account)──► Cop
 - **WebCenter:** the server makes its WebCenter calls with one service account, so everyone sees what that account can see. Your WebCenter is 25.07, and per-user WebCenter sign-in for SDK integrations needs 26.07 or later. See [Later: per-user WebCenter sign-in](#later-per-user-webcenter-sign-in).
 - **Audit log:** every tool call is logged on the VM with the person's name. Arguments and tokens are never logged.
 
-Allow about an hour for the whole setup. There are five parts:
+Allow about an hour for the whole setup. There are four parts:
 
 1. [WebCenter service account](#1-webcenter-service-account)
 2. [Entra app registration](#2-entra-app-registration)
 3. [Host the server](#3-host-the-server): **[A. Azure Container Apps](#a-azure-container-apps-recommended)** (free tier, nothing to maintain) or [B. Windows VM](#b-windows-vm)
-4. [Copilot Studio agent](#4-copilot-studio-agent)
-5. [Billing for Copilot Chat users](#5-billing-for-copilot-chat-users)
+4. [The Copilot agent](#4-the-copilot-agent): **[A. Declarative agent](#4a-declarative-agent-recommended-no-usage-charges)** (recommended: no usage charges) or [B. Copilot Studio agent](#4b-copilot-studio-agent-billed-per-use) (billed per use)
+
+**Cost:** with 3A and 4A the whole setup is designed to cost nothing: Container Apps' free allowance covers the hosting, and a declarative agent whose only tool is an external MCP server isn't metered for Copilot Chat users (only agents grounded in SharePoint or Graph connector data are). Metered agents are off by default, so as long as nobody sets up pay-as-you-go billing for Copilot, there's nothing to charge. If an agent ever needed billing, it would show as unavailable rather than send a bill.
 
 In the steps below, `<server-url>` is the address the hosting step prints, e.g. `https://esko-webcenter-mcp.<region>.azurecontainerapps.io` or `https://abp-webcenter-mcp.eastus.cloudapp.azure.com`.
 
@@ -47,14 +48,14 @@ In the **Microsoft Entra admin center** (entra.microsoft.com), go to **App regis
 3. **Expose an API:**
    - Next to **Application ID URI**, click **Add** and accept `api://<client-id>`.
    - Click **Add a scope**: name `access_as_user`, consent by **Admins and users**, display name "Access Esko WebCenter". Enable it.
-4. **Create a secret:** under **Certificates & secrets → New client secret**, choose 24 months and copy the **Value**. Copilot Studio needs it. Set a reminder to renew it.
+4. **Create a secret (only for 4B, Copilot Studio):** under **Certificates & secrets → New client secret**, choose 24 months and copy the **Value**. Set a reminder to renew it. Skip this for the declarative agent (4A).
 5. **API permissions:**
    - **Add a permission → My APIs → Esko WebCenter MCP**, then tick `access_as_user`.
    - Also add **Microsoft Graph → delegated → `offline_access`**.
    - Click **Grant admin consent**.
 6. **Restrict access (recommended):** go to **Enterprise applications → Esko WebCenter MCP → Properties** and set **Assignment required** to **Yes**. Then under **Users and groups**, add the engineers' group. Anyone not assigned can't sign in to the agent.
 
-You'll add a redirect URI from Copilot Studio in step 4.
+You'll add a redirect URI and a second Application ID URI in step 4.
 
 ## 3. Host the server
 
@@ -83,7 +84,7 @@ Then deploy:
    The password and token are stored as Container Apps **secrets**.
 3. **Check the result:** the script creates the resource group `rg-esko-mcp`, the environment and the app, then checks it's answering. It ends with:
    ```
-   MCP server URL for Copilot Studio:  https://esko-webcenter-mcp.<...>.azurecontainerapps.io/mcp
+   MCP server URL:  https://esko-webcenter-mcp.<...>.azurecontainerapps.io/mcp
    ```
 
 To keep running it:
@@ -131,7 +132,79 @@ What the installer sets up:
 **Updating:** extract the new zip and run the same `install.ps1` command again. Your settings are kept.
 **Uninstalling:** run `.\uninstall.ps1`, adding `-DeleteFiles` to also remove `C:\EskoMCP`.
 
-## 4. Copilot Studio agent
+## 4. The Copilot agent
+
+### 4A. Declarative agent (recommended, no usage charges)
+
+This is a small app package: agent instructions plus a plugin that points Copilot at your server. It runs on Copilot's built-in model, signs engineers in with their work account automatically (Entra single sign-on), and needs no Copilot Studio and no billing setup. Everything is in the remote zip's `copilot-agent` folder.
+
+Before you start, have these to hand:
+- **The server address** from step 3, e.g. `https://esko-webcenter-mcp.<...>.azurecontainerapps.io`.
+- **The two IDs** from step 2: the Application (client) ID and the Directory (tenant) ID.
+
+**1. Register single sign-on for the agent.** Open the **Teams Developer Portal** (dev.teams.microsoft.com) and go to **Tools → Microsoft Entra SSO client ID registration → Register client ID** (or **New client registration**). Fill in:
+
+| Field | Value |
+|---|---|
+| Registration name | Esko WebCenter MCP |
+| Base URL | `<server-url>/mcp` |
+| Restrict usage by org | **My organization only** |
+| Restrict usage by app | **Any Teams app** for now (you can bind it to the agent's app ID after step 5) |
+| Client ID | the Application (client) ID from step 2 |
+| Scope | `api://<client-id>/access_as_user` |
+
+Save. Copy the two values it shows:
+- **Microsoft Entra SSO registration ID**: this goes into the agent package.
+- **Application ID URI**: it looks like `api://auth-<guid>/<client-id>`.
+
+**2. Update the Entra app registration.** In the Entra admin center, open **App registrations → Esko WebCenter MCP**:
+1. **Add the second Application ID URI:** open **Manifest**, find `"identifierUris"` and add the Application ID URI from step 1, keeping the existing one. For example, `["api://<client-id>", "api://auth-<guid>/<client-id>"]`. Save. The portal's Expose an API page only shows the first URI; that's normal.
+2. **Add the redirect URI:** go to **Authentication → Add a platform → Web** (or add to the existing Web platform) and enter `https://teams.microsoft.com/api/platform/v1.0/oAuthConsentRedirect`. Save.
+3. **Authorize Microsoft's token store:** go to **Expose an API → Add a client application**, enter `ab3be6b7-f5df-413d-ac2d-abf1e3fd9c0b` (the Microsoft Enterprise Token Store), tick the `access_as_user` scope, and add it.
+
+**3. Tell the server to accept the new audience.** Copilot's tokens will be issued for the new Application ID URI.
+- **Container Apps:** from the extracted remote zip folder, run:
+  ```powershell
+  .\deploy-containerapp.ps1 -AddAudience api://auth-<guid>/<client-id>
+  ```
+  This changes only that one setting. It doesn't ask for passwords.
+- **Windows VM:** run the installer again with both audiences:
+  ```powershell
+  .\install.ps1 -Hostname <vm-dns-name> -TenantId <tenant-id> -Audience "api://<client-id>,api://auth-<guid>/<client-id>" -Reconfigure
+  ```
+
+**4. Build the agent package.** In the extracted remote zip folder:
+```powershell
+cd copilot-agent
+.\build-agent-package.ps1 -ServerUrl <server-url> -AuthReferenceId <Microsoft Entra SSO registration ID>
+```
+It creates `esko-webcenter-agent-1.0.0.zip` and saves its settings, including the agent's app ID, in `agent-settings.json`. Keep that file: later rebuilds reuse the same app ID so they update the agent rather than create a second one.
+
+**5. Upload it, for yourself first.** In the **Microsoft 365 admin center** (admin.microsoft.com), go to **Agents → All agents → Upload custom agent** (some tenants label it **Add agent**):
+1. Choose the zip and select **Next**.
+2. Check the name and icon.
+3. Under **Publish**, choose **Just me** (or a small test group).
+4. Leave **Deploy** empty for now, then finish.
+
+It can take 5 to 10 minutes to appear.
+
+**6. Test it.** Open the Microsoft 365 Copilot app, or m365.cloud.microsoft/chat:
+1. Under **Agents**, pick **WebCenter**.
+2. Ask *"Give me the design specs for the project with description crop excellence box."* The first time, select **Sign in to WebCenter** when it asks.
+3. You should get AT13294.1B, an RSC 14-1/2 × 9-1/4 × 14-1/2.
+
+To confirm it's free, test once with an engineer's account that has only Copilot Chat. If it answers, and no pay-as-you-go billing is set up for Copilot, it isn't being charged.
+
+**7. Roll it out:**
+1. In the admin center, open the agent and change **Publish** to the engineers' group.
+2. Optionally use **Deploy** to preinstall it, and pin it so it shows up without searching.
+3. Back in the Teams Developer Portal, you can set the SSO registration's **Restrict usage by app** to the app ID printed in step 4.
+
+**Updating the agent later** (instructions, conversation starters): rebuild with a higher version, e.g. `.\build-agent-package.ps1 -Version 1.0.1`, then open the agent in the admin center and upload the new zip as an update. Server updates (step 3) don't need a new agent package: the agent discovers the server's tools each time.
+
+### 4B. Copilot Studio agent (billed per use)
+
+Use this only if you need Copilot Studio features. For Copilot Chat users it's billed in Copilot Credits (see [Billing](#billing-for-copilot-studio-agents)).
 
 In **Copilot Studio** (copilotstudio.microsoft.com):
 
@@ -168,9 +241,9 @@ In **Copilot Studio** (copilotstudio.microsoft.com):
 
 The first time an engineer uses the agent, Copilot asks them to sign in. After that it just works.
 
-## 5. Billing for Copilot Chat users
+### Billing for Copilot Studio agents
 
-Your engineers use the free Copilot Chat, without the paid Microsoft 365 Copilot licence. For them, conversations with a Copilot Studio agent are billed in **Copilot Credits**. Set this up in the **Microsoft 365 admin center** or the **Power Platform admin center** with one of these:
+This applies only to 4B. Your engineers use the free Copilot Chat, without the paid Microsoft 365 Copilot licence. For them, conversations with a Copilot Studio agent are billed in **Copilot Credits**: $0.01 per credit pay-as-you-go, with each tool call counting as an agent action (5 credits). Set this up in the **Microsoft 365 admin center** or the **Power Platform admin center** with one of these:
 
 - **Pay-as-you-go:** link an Azure subscription and set a monthly budget.
 - **Prepaid Copilot Credit packs**
@@ -182,6 +255,9 @@ Turn on usage alerts so there are no surprises. Users with a paid Microsoft 365 
 | Symptom | Check |
 |---|---|
 | `<server-url>/healthz` doesn't load | Container Apps: `az containerapp logs show -n esko-webcenter-mcp -g rg-esko-mcp --tail 50`. VM: NSG allows 443 and 80, the DNS label resolves to the VM, and see `C:\EskoMCP\logs\caddy.log` |
+| Declarative agent: "Sign in" loops or the tool fails with a 401 | Step 4A.2 done (second URI in `identifierUris`, the `oAuthConsentRedirect` redirect URI, token store client `ab3be6b7-...` authorized), and 4A.3 run with exactly the Application ID URI the Developer Portal showed |
+| Declarative agent doesn't appear | Wait 10 minutes; check you're in the agent's **Publish** audience in the admin center, and that custom agents aren't blocked under **Agents → Settings** |
+| Declarative agent says it's unavailable / needs billing | It's being treated as metered; tell the developer before turning on any billing. Check the agent has no SharePoint or connector knowledge added |
 | Copilot Studio says the connection failed | Callback URL added in Entra (step 4.3); scopes exactly `api://<client-id>/access_as_user offline_access`; admin consent granted |
 | "Microsoft sign-in token rejected (ERR_JWT_CLAIM_VALIDATION_FAILED)" in a tool error | `-Audience` matches the Application ID URI; rerun the deploy/install command (VM: add `-Reconfigure`) |
 | A user can't sign in | They're assigned to the enterprise app (step 2.6) |
@@ -194,8 +270,8 @@ Turn on usage alerts so there are no surprises. Users with a paid Microsoft 365 
 
 Once Esko moves your site to WebCenter **26.07 or later** and enables the **OAuth SSO plugin for SDK authentication**, each engineer can sign in to WebCenter as themselves. They'd then see only what their own account can see, and the service account is no longer needed:
 
-1. **WebCenter:** in the new OAuth admin page, create a client and add Copilot Studio's callback URL as its redirect URL.
+1. **WebCenter:** in the new OAuth admin page, create a client. Add Copilot's callback URL `https://teams.microsoft.com/api/platform/v1.0/oAuthRedirect` (declarative agent) or Copilot Studio's callback URL as its redirect URL.
 2. **The server:** redeploy in OAuth mode, with `.\deploy-containerapp.ps1 -AuthMode oauth -RegistryUsername <github-username>` (Container Apps) or `.\install.ps1 -Hostname <vm-dns-name> -AuthMode oauth -Reconfigure` (VM).
-3. **Copilot Studio:** change the tool's OAuth settings to WebCenter's client ID, secret and authorization/token URLs.
+3. **The agent:** for the declarative agent, register an OAuth client in the Teams Developer Portal (**Tools → OAuth client registration**) with WebCenter's client ID, secret and URLs, then rebuild the package with `-AuthReferenceId <that registration ID>`. For Copilot Studio, change the tool's OAuth settings.
 
 The server already supports this mode (`MCP_AUTH_MODE=oauth`), and it's covered by the automated tests.
