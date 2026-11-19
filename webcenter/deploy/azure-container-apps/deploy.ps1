@@ -101,13 +101,25 @@ if ($PrintSpec) {
   $fqdn = "$AppName.<environment-domain>"
 } else {
 Step "Preparing Azure resources"
+# Registering providers needs subscription-level rights; with access to just a resource group, ask an admin to
+# register Microsoft.App and Microsoft.OperationalInsights once (Subscription -> Resource providers).
 foreach ($ns in @("Microsoft.App", "Microsoft.OperationalInsights")) {
-  $state = Invoke-Az provider show -n $ns --query registrationState -o tsv
-  if ($state -ne "Registered") { Invoke-Az provider register -n $ns --wait | Out-Null }
+  try {
+    $state = Invoke-Az provider show -n $ns --query registrationState -o tsv
+    if ($state -ne "Registered") { Invoke-Az provider register -n $ns --wait | Out-Null }
+    Ok "$ns registered"
+  } catch {
+    Warn "Couldn't check/register $ns (needs subscription-level rights). Continuing; if the next step fails, have an admin register it under Subscription -> Resource providers."
+  }
 }
-Ok "Resource providers registered"
-Invoke-Az group create -n $ResourceGroup -l $Location -o none | Out-Null
-Ok "Resource group $ResourceGroup ($Location)"
+$rgLoc = & az group show -n $ResourceGroup --query location -o tsv 2>$null
+if ($LASTEXITCODE -eq 0 -and $rgLoc) {
+  Ok "Using existing resource group $ResourceGroup ($rgLoc)"
+  if (-not $PSBoundParameters.ContainsKey("Location")) { $Location = $rgLoc }
+} else {
+  Invoke-Az group create -n $ResourceGroup -l $Location -o none | Out-Null
+  Ok "Created resource group $ResourceGroup ($Location)"
+}
 
 $envId = & az containerapp env show -n $EnvironmentName -g $ResourceGroup --query id -o tsv 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $envId) {
