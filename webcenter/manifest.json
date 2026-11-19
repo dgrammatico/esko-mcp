@@ -1,0 +1,160 @@
+{
+  "manifest_version": "0.3",
+  "name": "webcenter-readonly",
+  "display_name": "Esko WebCenter (read-only)",
+  "version": "1.0.0",
+  "description": "Read-only access to Esko WebCenter for packaging engineers: projects, documents and ArtiosCAD designs, specs, where-used, tasks, approvals, thumbnails and downloads.",
+  "long_description": "Uses the WebCenter SDK over HTTPS. Every tool is read-only: the server refuses to call any SDK page that changes data in WebCenter. The download tool saves files to a folder on this computer. Set the WebCenter address to 'mock' to try it with built-in sample data.",
+  "author": {
+    "name": "Anchor Bay Packaging"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.js"
+      ],
+      "env": {
+        "WEBCENTER_BASE_URL": "${user_config.base_url}",
+        "WEBCENTER_USERNAME": "${user_config.username}",
+        "WEBCENTER_PASSWORD": "${user_config.password}",
+        "WEBCENTER_SSOIID": "${user_config.ssoiid}",
+        "WEBCENTER_ALLOW_LIVE": "${user_config.allow_live}",
+        "WEBCENTER_DOWNLOAD_DIR": "${user_config.download_dir}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "webcenter_find_projects",
+      "description": "List projects or templates by scope, name, status or recent activity."
+    },
+    {
+      "name": "webcenter_get_project",
+      "description": "One project's details: folders, attributes, characteristics, related projects."
+    },
+    {
+      "name": "webcenter_list_documents",
+      "description": "Documents in a project with version, approval status and viewer link."
+    },
+    {
+      "name": "webcenter_get_document_history",
+      "description": "Every version of a document with approval stages, decisions and comments."
+    },
+    {
+      "name": "webcenter_get_attributes",
+      "description": "Specs/attributes on a project, document or task."
+    },
+    {
+      "name": "webcenter_get_document_references",
+      "description": "Where a design is used, and what it references."
+    },
+    {
+      "name": "webcenter_get_project_tasks",
+      "description": "A project's tasks: status, owner, dates, documents, specifications."
+    },
+    {
+      "name": "webcenter_get_thumbnail",
+      "description": "Thumbnail image of a document or project."
+    },
+    {
+      "name": "webcenter_download_document",
+      "description": "Download a document (e.g. an .ARD) to this computer."
+    },
+    {
+      "name": "webcenter_get_todo_list",
+      "description": "Tasks and approvals waiting on a user."
+    },
+    {
+      "name": "webcenter_find_users",
+      "description": "List users by type or name."
+    },
+    {
+      "name": "webcenter_get_user",
+      "description": "One user's details, role and groups."
+    },
+    {
+      "name": "webcenter_get_group",
+      "description": "A group's members."
+    },
+    {
+      "name": "webcenter_browse_characteristics",
+      "description": "The characteristics tree used to classify projects."
+    },
+    {
+      "name": "webcenter_find_projects_by_characteristic",
+      "description": "Projects tagged with a characteristic."
+    },
+    {
+      "name": "webcenter_search",
+      "description": "Run a saved or new WebCenter search."
+    },
+    {
+      "name": "webcenter_diagnostics_raw_response",
+      "description": "Troubleshooting: raw response of a read-only call."
+    }
+  ],
+  "user_config": {
+    "base_url": {
+      "type": "string",
+      "title": "WebCenter address",
+      "description": "Your WebCenter site. Type mock to use built-in sample data instead.",
+      "default": "https://abp.esko-saas.com/WebCenter/",
+      "required": true
+    },
+    "username": {
+      "type": "string",
+      "title": "Username",
+      "description": "WebCenter username (a dedicated SDK user is best).",
+      "required": true
+    },
+    "password": {
+      "type": "string",
+      "title": "Password",
+      "description": "WebCenter password. Stored in your system keychain.",
+      "sensitive": true,
+      "required": true
+    },
+    "download_dir": {
+      "type": "directory",
+      "title": "Download folder",
+      "description": "Where downloaded WebCenter documents are saved. Leave empty for Downloads\\WebCenter.",
+      "required": false,
+      "default": ""
+    },
+    "ssoiid": {
+      "type": "string",
+      "title": "Basic login SSO instance ID (optional)",
+      "description": "Only if your site uses single sign-on (SAML) by default: the ID of the basic password login from the 'SSO Instance Configuration' admin page.",
+      "required": false,
+      "default": ""
+    },
+    "allow_live": {
+      "type": "boolean",
+      "title": "Allow live WebCenter",
+      "description": "Lets the server contact your real WebCenter. Turn off to block live calls.",
+      "default": true,
+      "required": false
+    }
+  },
+  "compatibility": {
+    "platforms": [
+      "win32",
+      "darwin",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=20.0.0"
+    }
+  },
+  "keywords": [
+    "esko",
+    "webcenter",
+    "packaging",
+    "artioscad",
+    "approvals"
+  ],
+  "license": "UNLICENSED"
+}
