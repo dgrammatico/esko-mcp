@@ -1,5 +1,5 @@
-// Read-only tools aimed at packaging engineers: specs/attributes, design references ("where used"),
-// project tasks, thumbnails, downloading designs, groups, characteristics, and a diagnostic raw view.
+// Read-only tools aimed at packaging engineers: specs/attributes, thumbnails, downloading designs,
+// groups, characteristics, and a diagnostic raw view.
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -7,19 +7,23 @@ import { mkdir, writeFile, access } from "node:fs/promises";
 import { join, extname, basename } from "node:path";
 import { WebCenterClient, WebCenterError, READ_ONLY_PAGES, arr, str, date } from "./client.js";
 import { Lookup } from "./lookup.js";
-import { ok, fail, READ_ONLY } from "./tools.js";
+import { ok, fail, READ_ONLY, attrValue } from "./tools.js";
 
 // ---- helpers -----------------------------------------------------------------
 
 /** Flatten an <attribute_category> block into readable rows (SDK 3.44). */
-function shapeAttributes(categories: any[]) {
-  return categories.map((c: any) => ({
+function shapeAttributes(categories: any[], includeEmpty: boolean) {
+  return categories.map((c: any) => {
+    const all = arr(c.atts?.att);
+    const atts = all.filter((a: any) => includeEmpty || str(a.av) !== undefined);
+    return {
     category: str(c.name),
     category_id: str(c.id),
-    attributes: arr(c.atts?.att).map((a: any) => ({
+    hidden_empty_attributes: includeEmpty ? undefined : all.length - atts.length || undefined,
+    attributes: atts.map((a: any) => ({
       name: str(a.an),
-      label: str(a.alt),
-      value: str(a.av),
+      label: (() => { const l = str(a.alt); return l && !l.startsWith("i18n!") && l !== str(a.an) ? l : undefined; })(),
+      value: attrValue(a),
       unit: str(a.au),
       type: str(a.at),
       referenced_documents: arr(a.drs?.dr).map((d: any) => ({
@@ -30,7 +34,8 @@ function shapeAttributes(categories: any[]) {
         count: str(d.count),
       })),
     })),
-  }));
+    };
+  });
 }
 
 /** Latest version ID of a document, via its history. */
@@ -69,38 +74,6 @@ async function uniquePath(dir: string, name: string): Promise<string> {
   throw new WebCenterError("Couldn't find a free file name in the download folder.");
 }
 
-function shapeTask(t: any) {
-  const ownerUser = arr(t.user)[0];
-  const ownerGroup = arr(t.group)[0];
-  return {
-    task_id: t["@id"],
-    name: str(t.name),
-    description: str(t.description),
-    type: str(t.task_type_name),
-    status: str(t.status?.status_name),
-    complete: str(t.is_complete) === "1",
-    project: { id: str(t.project_id), name: str(t.project_name) },
-    owner: ownerUser
-      ? { kind: "user", id: ownerUser["@id"], username: str(ownerUser.name), name: [str(ownerUser.first_name), str(ownerUser.last_name)].filter(Boolean).join(" ") || undefined, email: str(ownerUser.email) }
-      : ownerGroup
-        ? { kind: str(ownerGroup.is_role) === "1" ? "role" : "group", id: ownerGroup["@id"], name: str(ownerGroup.name) }
-        : str(t.task_owner_id) ? { id: str(t.task_owner_id), kind: str(t.task_owner_type) } : undefined,
-    previous_owner: str(t.previous_task_owner_name),
-    created: date(t.created_date),
-    due: date(t.due_date),
-    estimated_finish: date(t.estimated_date),
-    modified: date(t.modified_date),
-    documents: arr(t.doc_version_list?.doc_version_pair).map((d: any) => ({ version_id: d["@id"], name: str(d.doc_name) })),
-    specifications: arr(t.specification_value_view_list?.specification_value_view).map((v: any) => ({
-      name: str(v.attribute?.name),
-      value: str(v.attribute_value?.value),
-      required: str(v.is_required) === "1" || undefined,
-    })),
-    predecessors: arr(t.predecessor_list?.project_wctask ?? t.predecessors?.project_wctask).map((p: any) => ({ task_id: p["@id"], name: str(p.name) })),
-    successors: arr(t.successor_list?.project_wctask ?? t.successors?.project_wctask).map((p: any) => ({ task_id: p["@id"], name: str(p.name) })),
-  };
-}
-
 function shapeCharTree(elems: any[]): any[] {
   return elems.map((e: any) => ({ name: str(e.name)?.trim(), id: str(e.id), children: shapeCharTree(arr(e.children?.elem)) }));
 }
@@ -125,6 +98,7 @@ export function registerEngineeringTools(server: McpServer, wc: WebCenterClient,
         task_id: z.string().optional(),
         task_name: z.string().optional(),
         reference_levels: z.number().int().min(0).max(3).default(0).describe("Also include attributes of referenced documents, this many levels deep."),
+        include_empty: z.boolean().default(false).describe("Also list attributes that have no value (hidden by default)."),
       },
       annotations: READ_ONLY,
     },
@@ -145,100 +119,9 @@ export function registerEngineeringTools(server: McpServer, wc: WebCenterClient,
         const root = doc[Object.keys(doc).find((k) => k !== "?xml") ?? ""] ?? doc;
         const cats = arr(root?.attribute_category ?? doc.attribute_category);
         const level = a.document_id || a.document_name ? "document" : a.task_id || a.task_name ? "task" : "project";
-        return ok({ level, categories: shapeAttributes(cats) });
+        return ok({ level, categories: shapeAttributes(cats, a.include_empty) });
       } catch (e: any) {
         if (e instanceof WebCenterError && e.code === "043") return ok({ categories: [], note: "No attributes are set on this object." });
-        return fail(e);
-      }
-    },
-  );
-
-  // 10. Document references: where used / referenced documents (SDK 3.45–3.47)
-  server.registerTool(
-    "webcenter_get_document_references",
-    {
-      title: "Where a design is used / what it references",
-      description:
-        "For a document (e.g. an ArtiosCAD design), find what references it ('used_by': the projects, documents and tasks that hold it in a document-reference attribute), " +
-        "or follow a document-reference attribute down ('children': the documents held in that attribute) or up ('parents': documents holding this one in that attribute). " +
-        "Identify the document by version_id, document_id, or project_name + document_name.",
-      inputSchema: {
-        direction: z.enum(["used_by", "children", "parents"]).default("used_by"),
-        version_id: z.string().optional(),
-        document_id: z.string().optional().describe("Uses the latest version."),
-        project_name: z.string().optional(),
-        document_name: z.string().optional(),
-        attribute_name: z.string().optional().describe("Required for 'children' and 'parents': the document-reference attribute, e.g. 'Die Line'."),
-        only_in_project_id: z.string().optional().describe("For 'children'/'parents': only documents from this project (e.g. a library)."),
-      },
-      annotations: READ_ONLY,
-    },
-    async (a) => {
-      try {
-        let versionId = a.version_id;
-        if (!versionId && a.document_id) versionId = await latestVersionId(wc, a.document_id);
-        if (a.direction === "used_by") {
-          if (!versionId && !(a.project_name && a.document_name)) throw new WebCenterError("Give version_id, document_id, or project_name + document_name.");
-          const doc = await wc.call("GetDocRefParentObjects.jsp", {
-            docversionid: versionId,
-            projectname: versionId ? undefined : a.project_name,
-            documentname: versionId ? undefined : a.document_name,
-          });
-          const r = doc.docref_dependencies ?? {};
-          const items = (x: any) => arr(x?.item);
-          return ok({
-            document: { name: str(r.source_doc_id?.name), document_id: str(r.source_doc_id?.document_id), project_id: str(r.source_doc_id?.project_id) },
-            used_by_documents: items(r.docs_dep).map((i: any) => ({ name: str(i.name), version_id: str(i.id), via_attribute_id: str(i.attr_id) })),
-            used_by_projects: items(r.projects_dep).map((i: any) => ({ name: str(i.name), project_id: str(i.id), via_attribute_id: str(i.attr_id) })),
-            used_by_tasks: items(r.tasks_dep).map((i: any) => ({ name: str(i.name), task_id: str(i.id), project_id: str(i.project_id), via_attribute_id: str(i.attr_id) })),
-          });
-        }
-        if (!versionId) throw new WebCenterError("Give version_id or document_id for 'children' and 'parents'.");
-        if (!a.attribute_name) throw new WebCenterError("attribute_name is required for 'children' and 'parents'.");
-        const page = a.direction === "children" ? "GetDocRefChildDocument.jsp" : "GetDocRefParentDocument.jsp";
-        const doc = await wc.call(page, { docversionid: versionId, attributename: a.attribute_name, projectid: a.only_in_project_id });
-        const docs = arr(doc.document_list?.document).map((d: any) => ({ name: str(d.name), document_id: str(d.doc_id), version_id: str(d.version_id) }));
-        return ok({ direction: a.direction, attribute: a.attribute_name, documents: docs });
-      } catch (e) {
-        return fail(e);
-      }
-    },
-  );
-
-  // 11. Project tasks (SDK 3.55 GetProjectTasks.jsp)
-  server.registerTool(
-    "webcenter_get_project_tasks",
-    {
-      title: "Get a project's tasks",
-      description:
-        "List the WebCenter tasks in a project (or specific tasks by ID): name, type, status, owner, dates, attached documents, task specifications, and optionally predecessors/successors.",
-      inputSchema: {
-        project_id: z.string().optional(),
-        project_name: z.string().optional(),
-        task_ids: z.array(z.string()).optional().describe("Specific task IDs (project not needed)."),
-        open_only: z.boolean().default(false).describe("Hide completed tasks."),
-        include_dependencies: z.boolean().default(false),
-        include_workflow_tasks: z.boolean().default(true),
-      },
-      annotations: READ_ONLY,
-    },
-    async (a) => {
-      try {
-        if (!a.task_ids?.length && !a.project_id && !a.project_name) throw new WebCenterError("Give project_id, project_name, or task_ids.");
-        const doc = await wc.call("GetProjectTasks.jsp", {
-          taskid: a.task_ids,
-          projectid: a.task_ids?.length ? undefined : a.project_id,
-          projectname: a.task_ids?.length || a.project_id ? undefined : a.project_name,
-          verbose: 1,
-          gettaskdep: a.include_dependencies ? 1 : 0,
-          getsubtasks: 1,
-          noworkflows: a.include_workflow_tasks ? 0 : 1,
-        });
-        const r = doc.result ?? doc;
-        let tasks = arr(r.project_wctask).concat(arr(r.project).flatMap((p: any) => arr(p.project_wctask))).map(shapeTask);
-        if (a.open_only) tasks = tasks.filter((t) => !t.complete);
-        return ok({ task_count: tasks.length, tasks });
-      } catch (e) {
         return fail(e);
       }
     },

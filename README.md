@@ -4,7 +4,7 @@ MCP servers that connect Claude to Anchor Bay Packaging's Esko systems.
 
 | Folder | What it is | Status |
 |---|---|---|
-| [`webcenter/`](webcenter/) | **Esko WebCenter (read-only)**: projects, documents and ArtiosCAD designs, specs, where-used, tasks, approvals, thumbnails, downloads | 1.0.0, in use |
+| [`webcenter/`](webcenter/) | **Esko WebCenter (read-only)**: projects, documents and ArtiosCAD designs, specs, approvals, thumbnails, downloads | 1.0.0, in use |
 
 ## Install (engineers)
 

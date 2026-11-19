@@ -4,8 +4,8 @@ This adds read-only WebCenter access to Claude Desktop, so you can ask things li
 
 - "What's the latest version of the CASM design in A40491.2C, and who uploaded it?"
 - "Show me the specs on project ABP4141.3A."
-- "Where is this die line used?"
-- "What tasks are open on project A42357.1A?"
+- "Which projects are managed by US ENGINEERS, and who's in that group?"
+- "Find all ArtiosCAD designs starting with A40491."
 - "Show me a thumbnail of A40491.2BPTA.ARD."
 - "Download the latest A40491.2CASM.ARD so I can open it in ArtiosCAD."
 - "What's waiting on me in WebCenter?"

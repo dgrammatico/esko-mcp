@@ -24,7 +24,7 @@ const projects = [
   { id: "00002_0000001001", name: "ACME-1001 Cereal Carton", description: "Folding carton, 3 SKUs", status: "Active", statusId: "00001_0000000001", managerId: users[0].id, created: 1762000000000, modified: 1763300000000, due: 1764500000000,
     folders: [{ id: "00002_0000002001", name: "Structural" }, { id: "00002_0000002002", name: "Graphics" }],
     attributes: [{ id: "00002_0000000002", value: "ACME Foods" }, { id: "00002_0000000018", value: "SBS 18pt" }] },
-  { id: "00002_0000001002", name: "ACME-1002 Shipper RSC", description: "Corrugated shipper", status: "Active", statusId: "00001_0000000001", managerId: "00002_0000000002", managerType: "group", created: 1761000000000, modified: 1763000000000, due: 0, folders: [], attributes: [] },
+  { id: "00002_0000001002", name: "ACME-1002 Shipper RSC", description: "Corrugated shipper", status: "Active", statusId: "00001_0000000001", managerId: "00002_0000000502", managerType: "group", created: 1761000000000, modified: 1763000000000, due: 0, folders: [], attributes: [] },
   { id: "00002_0000001003", name: "BRANDCO-77 Display", description: "POP display", status: "Completed", statusId: "00001_0000000003", managerId: users[0].id, created: 1755000000000, modified: 1758000000000, due: 0, folders: [], attributes: [] },
   { id: "00002_0000001900", name: "TEMPLATE Folding Carton", description: "Standard carton template", status: "Active", statusId: "00001_0000000001", managerId: users[0].id, created: 1700000000000, modified: 1700000000000, due: 0, folders: [], attributes: [], template: true },
 ];
@@ -57,13 +57,13 @@ function parseParams(req, body) {
   return { page: url.pathname, get: (k) => lower.get(k)?.[0], all: (k) => lower.get(k) || [] };
 }
 
-const groups = [{ id: "00002_0000000002", name: "US ENGINEERS", members: [users[0], users[1]] }];
+const groups = [{ id: "00002_0000000502", name: "US ENGINEERS", members: [users[0], users[1]] }];
 
 function projectXml(p, details) {
   const m = p.managerType === "group" ? null : userById(p.managerId);
   const folders = details ? p.folders.map((f) => `<folder id="${f.id}"><deleted>0</deleted><name>${esc(f.name)}</name><description/><total_docs>${documents.filter((d) => d.folderId === f.id).length}</total_docs></folder>`).join("") : "";
   const attrs = details ? p.attributes.map((a, i) => `<project_attribute id="00002_00000075${i}"><deleted>0</deleted><attribute_id>${a.id}</attribute_id><attribute_value>${esc(a.value)}</attribute_value></project_attribute>`).join("") : "";
-  return `<project id="${p.id}"><deleted>0</deleted><name>${esc(p.name)}</name><description>${esc(p.description)}</description><manager_id>${p.managerId}</manager_id><manager_type>${p.managerType || "user"}</manager_type><customer_id/><created_date>${p.created}</created_date><modified_date>${p.modified}</modified_date><root_folder_docs_count>${documents.filter((d) => d.projectId === p.id && !d.folderId).length}</root_folder_docs_count><is_template>${p.template ? 1 : 0}</is_template><characteristic_list/><attribute_list>${attrs}</attribute_list><folder_list>${folders}</folder_list><status_id>${p.statusId}</status_id><due_date>${p.due}</due_date>${m ? `<manager id="${m.id}"><deleted>0</deleted><name>${m.name}</name><last_name>${esc(m.last)}</last_name><first_name>${esc(m.first)}</first_name><email>${esc(m.email)}</email></manager>` : ""}<thumbnail_url>thumbnails/project.gif</thumbnail_url><project_user_permission><permission><view>1</view><add>1</add><update>1</update><delete>1</delete><checkout>1</checkout><download>1</download><change_approval>1</change_approval><change_task>1</change_task><change_bom>1</change_bom><can_manage_this_project>1</can_manage_this_project></permission></project_user_permission></project>`;
+  return `<project id="${p.id}"><deleted>0</deleted><name>${esc(p.name)}</name><description>${esc(p.description)}</description><manager_id>${p.managerId}</manager_id><manager_type>${p.managerType || "user"}</manager_type><customer_id/><created_date>${p.created}</created_date><modified_date>${p.modified}</modified_date><root_folder_docs_count>${documents.filter((d) => d.projectId === p.id && !d.folderId).length}</root_folder_docs_count><is_template>${p.template ? 1 : 0}</is_template><characteristic_list/><attribute_list>${attrs}</attribute_list><folder_list>${folders}</folder_list><status_id>${p.statusId}</status_id><due_date>${p.due}</due_date>${m ? `<manager id="${m.id}"><deleted>0</deleted><name>${m.name}</name><last_name>${esc(m.last)}</last_name><first_name>${esc(m.first)}</first_name><email>${esc(m.email)}</email></manager>` : `<manager id="${p.managerId}"><group id="${p.managerId}"><deleted>0</deleted><name>${esc((groups.find((g) => g.id === p.managerId) || {}).name || "")}</name><group_vis_type>0</group_vis_type></group></manager>`}<projectcreator id="${users[0].id}"><name>${users[0].name}</name><last_name>${esc(users[0].last)}</last_name><first_name>${esc(users[0].first)}</first_name></projectcreator><thumbnail_url>thumbnails/project.gif</thumbnail_url><project_user_permission><permission><view>1</view><add>1</add><update>1</update><delete>1</delete><checkout>1</checkout><download>1</download><change_approval>1</change_approval><change_task>1</change_task><change_bom>1</change_bom><can_manage_this_project>1</can_manage_this_project></permission></project_user_permission></project>`;
 }
 
 function findProject(q) {
@@ -197,37 +197,11 @@ const handlers = {
     if (docLevel) {
       const d = documents.find((x) => x.projectId === p.id && (x.docId === q.get("documentid") || x.verId === q.get("docverid") || x.name.toLowerCase() === (q.get("documentname") || "").toLowerCase()));
       if (!d) return err("021", "Specified document doesn't exist");
-      return `<attributes><attribute_category><id>00002_0000005402</id><name>Structural Specs</name><atts><att><id>00002_0000005012</id><an>Style</an><av>RTE</av><at>Text</at></att><att><id>00002_0000005013</id><an>Board</an><av>SBS 18pt</av><at>Text</at></att><att><id>00002_0000005020</id><an>Length</an><av>8.5</av><at>Length</at><au>in</au></att><att><id>00002_0000000201</id><an>Die Line</an><at>Document Reference</at><av>shipper-rsc.ARD</av><drs><dr><dn>shipper-rsc.ARD</dn><dvidx>1</dvidx><id>00002_0000003245</id><count>1</count><dv>00002_0000004101</dv><astat>Approved</astat></dr></drs></att></atts></attribute_category></attributes>`;
+      return `<attributes><attribute_category><id>00002_0000005402</id><name>Structural Specs</name><atts><att><id>00002_0000005012</id><an>Style</an><av>RTE</av><at>Text</at></att><att><id>00002_0000005013</id><an>Board</an><av>SBS 18pt</av><at>Text</at></att><att><id>00002_0000005020</id><an>Length</an><av>8.5</av><at>Length</at><au>in</au></att><att><id>00002_0000005021</id><an>Date 1</an><av>1791555422000</av><at>DateTime</at></att><att><id>00002_0000005022</id><an>Drawn By 2</an><at>Text</at></att><att><id>00002_0000005023</id><an>Style2</an><alt>i18n!{T:CustomizedLabels:STYLE}</alt><av>RTE</av><at>Text</at></att><att><id>00002_0000000201</id><an>Die Line</an><at>Document Reference</at><av>shipper-rsc.ARD</av><drs><dr><dn>shipper-rsc.ARD</dn><dvidx>1</dvidx><id>00002_0000003245</id><count>1</count><dv>00002_0000004101</dv><astat>Approved</astat></dr></drs></att></atts></attribute_category></attributes>`;
     }
     if (taskLevel) return err("121", "Specified task(s) not found or cannot be accessed");
     if (!p.attributes.length) return err("043", "No Attributes were found");
     return `<attributes><attribute_category><id>00002_0000005401</id><name>Project Info</name><atts>${p.attributes.map((a, i) => `<att><id>${a.id}</id><an>${i === 0 ? "Customer" : "Board Grade"}</an><av>${esc(a.value)}</av><at>Text</at></att>`).join("")}</atts></attribute_category></attributes>`;
-  },
-
-  "GetDocRefParentObjects.jsp": (q) => {
-    const d = documents.find((x) => x.verId === q.get("docversionid") || x.name.toLowerCase() === (q.get("documentname") || "").toLowerCase());
-    if (!q.get("docversionid") && !q.get("documentname")) return err("002", "One or more mandatory parameters were not specified");
-    if (!d) return err("021", "Specified document doesn't exist");
-    return `<docref_dependencies><source_doc_id><name>${esc(d.name)}</name><project_id>${d.projectId}</project_id><document_id>${d.docId}</document_id></source_doc_id><docs_dep><nr_items>1</nr_items><item><name>1001-carton.ARD</name><id>00002_0000004003</id><attr_id>00002_0000000201</attr_id></item></docs_dep><projects_dep><nr_items>1</nr_items><item><name>ACME-1001 Cereal Carton</name><id>00002_0000001001</id><attr_id>00002_0000000202</attr_id></item></projects_dep><tasks_dep><nr_items>0</nr_items></tasks_dep></docref_dependencies>`;
-  },
-
-  "GetDocRefChildDocument.jsp": (q) => {
-    if (!q.get("docversionid")) return err("002", "One or more mandatory parameters were not specified");
-    if (!documents.find((x) => x.verId === q.get("docversionid"))) return err("021", "Specified document doesn't exist");
-    return `<document_list><document><name>shipper-rsc.ARD</name><doc_id>00002_0000003101</doc_id><version_id>00002_0000004101</version_id></document></document_list>`;
-  },
-
-  "GetDocRefParentDocument.jsp": (q) => {
-    if (!q.get("docversionid")) return err("002", "One or more mandatory parameters were not specified");
-    return `<document_list><document><name>1001-carton.ARD</name><doc_id>00002_0000003001</doc_id><version_id>00002_0000004003</version_id></document></document_list>`;
-  },
-
-  "GetProjectTasks.jsp": (q) => {
-    const p = findProject(q);
-    if (!q.get("taskid") && !p) return q.get("projectid") || q.get("projectname") ? err("011", "Specified project doesn't exist") : err("002", "One or more mandatory parameters were not specified");
-    const pr = p || projects[0];
-    const task = (id, name, status, done, owner) => `<project_wctask id="${id}"><project_id>${pr.id}</project_id><project_name>${esc(pr.name)}</project_name><created_date>1763000000000</created_date><due_date>1763900000000</due_date><estimated_date>1763800000000</estimated_date><modified_date>1763100000000</modified_date><description>${esc(name)} for ${esc(pr.name)}</description><name>${esc(name)}</name><task_type_name>Review</task_type_name><task_owner_id>${owner.id}</task_owner_id><task_owner_type>user</task_owner_type><status id="00001_000000000${done ? 4 : 2}"><status_name>${status}</status_name></status><is_complete>${done ? 1 : 0}</is_complete><doc_version_list><doc_version_pair id="${documents[0].verId}"><doc_name>${esc(documents[0].name)}</doc_name></doc_version_pair></doc_version_list><user id="${owner.id}"><name>${owner.name}</name><last_name>${esc(owner.last)}</last_name><first_name>${esc(owner.first)}</first_name><email>${esc(owner.email)}</email></user><specification_value_view_list><specification_value_view><attribute id="00002_0000000005"><name>Flute</name></attribute><attribute_value><attribute_id>00002_0000000005</attribute_id><value>B</value></attribute_value><is_required>1</is_required></specification_value_view></specification_value_view_list></project_wctask>`;
-    return `<result>${task("00002_0000000435", "Structural review", "In Progress", false, users[1])}${task("00002_0000000436", "Sample cut", "Completed", true, users[0])}</result>`;
   },
 
   "GetCharacteristicsTree.jsp": (q) => {
@@ -268,9 +242,20 @@ const handlers = {
     const type = q.get("newsearch");
     if (!type && !q.get("savedsearch")) return err("002", "One or more mandatory parameters were not specified");
     // The real output format is only documented live on the server; this is a placeholder shape.
-    const rows = (type === "proj" ? projects.filter((p) => !p.template).map((p) => ({ "proj.name": p.name, "proj.status": p.status, id: p.id })) : documents.map((d) => ({ "doc.name": d.name, "proj.name": projects.find((p) => p.id === d.projectId).name, id: d.docId })));
-    if ((q.get("format") || "").toLowerCase() === "json") return JSON.stringify({ mock: true, results: rows });
-    return `<search mock="true">${rows.map((r) => `<row id="${r.id}"/>`).join("")}</search>`;
+    const nameFilter = q.get("filter(proj.name).query") || q.get("filter(doc.name).query");
+    const re = nameFilter ? wildcard(nameFilter) : /.*/;
+    const cell = (id, v) => ({ id, values: [{ value: v, displaytxt: v }] });
+    let fields, rows;
+    if (type === "proj") {
+      fields = [{ id: "proj.name", label: "Project Name" }, { id: "proj.status", label: "Status" }];
+      rows = projects.filter((p) => !p.template && re.test(p.name)).map((p) => ({ uid: "p" + p.id, id: p.id, cells: [cell("proj.name", p.name), cell("proj.status", p.status)] }));
+    } else {
+      fields = [{ id: "doc.name", label: "Document Name" }];
+      rows = documents.filter((d) => re.test(d.name)).map((d) => ({ uid: "v" + d.verId, id: d.verId, cells: [cell("doc.name", d.name)] }));
+    }
+    const out = { config: {}, meta: { fields }, stats: { total: rows.length, returned: rows.length }, results: { table: { header: fields.map((f) => ({ id: f.id })), rows } } };
+    if ((q.get("format") || "").toLowerCase() === "json") return JSON.stringify(out);
+    return `<search>${rows.map((r) => `<row id="${r.id}"/>`).join("")}</search>`;
   },
 };
 

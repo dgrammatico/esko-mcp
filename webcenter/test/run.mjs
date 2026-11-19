@@ -38,7 +38,7 @@ try {
   const c = await connect(base);
 
   const { tools } = await c.listTools();
-  check("lists 17 tools", tools.length === 17, tools.map((t) => t.name).join(", "));
+  check("lists 15 tools", tools.length === 15, tools.map((t) => t.name).join(", "));
   check("every tool is marked read-only", tools.every((t) => t.annotations?.readOnlyHint === true && t.annotations?.destructiveHint === false));
   check("every tool has a description", tools.every((t) => (t.description || "").length > 40));
 
@@ -100,7 +100,11 @@ try {
 
   // ---- fixes for live-data gaps
   r = await call(c, "webcenter_find_projects", { scope: "all_by_name", name_contains: "1002" });
-  check("group manager resolved to group name", r.json?.projects?.[0]?.manager?.name === "US ENGINEERS" && r.json.projects[0].manager.kind === "group", JSON.stringify(r.json?.projects?.[0]?.manager));
+  check("group manager shown as the group, not a user with the same ID", r.json?.projects?.[0]?.manager?.name === "US ENGINEERS" && r.json.projects[0].manager.kind === "group", JSON.stringify(r.json?.projects?.[0]?.manager));
+  check("project creator shown", r.json?.projects?.[0]?.created_by?.username === "MOCKUSER", JSON.stringify(r.json?.projects?.[0]?.created_by));
+  check("status name filled from search", r.json?.projects?.[0]?.status === "Active", JSON.stringify(r.json?.projects?.[0]));
+  r = await call(c, "webcenter_get_project", { project_id: "00002_0000001001" });
+  check("get_project attributes use names", r.json?.project?.attributes?.[0]?.name === "Customer" && r.json.project.attributes[0].value === "ACME Foods", JSON.stringify(r.json?.project?.attributes));
   r = await call(c, "webcenter_list_documents", { project_id: "00002_0000001001" });
   check("document list shows version numbers", r.json?.documents?.every((d) => /^\d+$/.test(d.version || "")), JSON.stringify(r.json?.documents?.map((d) => d.version)));
 
@@ -108,21 +112,14 @@ try {
   r = await call(c, "webcenter_get_attributes", { project_id: "00002_0000001001" });
   check("project attributes", r.json?.level === "project" && r.json.categories?.[0]?.attributes?.[0]?.name === "Customer", r.text);
   r = await call(c, "webcenter_get_attributes", { project_id: "00002_0000001001", document_name: "1001-carton.ARD" });
+  check("empty attributes hidden by default", r.json?.categories?.[0]?.hidden_empty_attributes === 1 && !r.json.categories[0].attributes.some((a) => a.name === "Drawn By 2"), r.text);
+  check("DateTime attribute shown as a date", r.json?.categories?.[0]?.attributes?.find((a) => a.name === "Date 1")?.value === "2026-10-09", r.text);
+  check("i18n labels dropped", !r.json?.categories?.[0]?.attributes?.find((a) => a.name === "Style2")?.label, r.text);
   check("document attributes with unit + doc reference", r.json?.categories?.[0]?.attributes?.some((a) => a.unit === "in") && r.json.categories[0].attributes.some((a) => a.referenced_documents?.[0]?.name === "shipper-rsc.ARD"), r.text);
+  r = await call(c, "webcenter_get_attributes", { project_id: "00002_0000001001", document_name: "1001-carton.ARD", include_empty: true });
+  check("include_empty shows empty attributes", r.json?.categories?.[0]?.attributes?.some((a) => a.name === "Drawn By 2"), r.text);
   r = await call(c, "webcenter_get_attributes", { project_id: "00002_0000001003" });
   check("no attributes (043) is not an error", !r.isError && r.json?.note, r.text);
-
-  r = await call(c, "webcenter_get_document_references", { version_id: "00002_0000004101" });
-  check("where used: projects + documents", r.json?.used_by_projects?.length === 1 && r.json?.used_by_documents?.length === 1, r.text);
-  r = await call(c, "webcenter_get_document_references", { document_id: "00002_0000003001", direction: "children", attribute_name: "Die Line" });
-  check("children via document_id (resolves latest version)", r.json?.documents?.[0]?.name === "shipper-rsc.ARD", r.text);
-  r = await call(c, "webcenter_get_document_references", { version_id: "00002_0000004003", direction: "parents" });
-  check("parents without attribute is a clear error", r.isError && /attribute_name/.test(r.text), r.text);
-
-  r = await call(c, "webcenter_get_project_tasks", { project_name: "ACME-1001 Cereal Carton" });
-  check("project tasks with owner + specs", r.json?.task_count === 2 && r.json.tasks[0].owner?.name === "Jane Smith" && r.json.tasks[0].specifications?.[0]?.value === "B", r.text);
-  r = await call(c, "webcenter_get_project_tasks", { project_id: "00002_0000001001", open_only: true });
-  check("open_only hides completed tasks", r.json?.task_count === 1, r.text);
 
   let raw = await c.callTool({ name: "webcenter_get_thumbnail", arguments: { document_id: "00002_0000003001" } });
   check("document thumbnail returns a PNG image", raw.content?.[0]?.type === "image" && raw.content[0].mimeType === "image/png" && raw.content[0].data.length > 20, JSON.stringify(raw).slice(0, 200));
@@ -150,7 +147,9 @@ try {
   check("raw diagnostics refuses write pages", r.isError && /Not allowed/.test(r.text), r.text.slice(0, 200));
 
   r = await call(c, "webcenter_search", { new_search: "des" });
-  check("search returns JSON", !r.isError && r.json?.results?.mock === true, r.text);
+  check("search rows flattened with labels", !r.isError && r.json?.rows?.length === 3 && r.json.rows[0]["Document Name"], r.text);
+  r = await call(c, "webcenter_search", { new_search: "proj", columns: ["proj.name", "proj.status"], filters: { "filter(proj.name).query": "ACME*" } });
+  check("search: project status column", r.json?.rows?.every((x) => x.Status === "Active"), r.text);
   r = await call(c, "webcenter_search", {});
   check("search without type is a clear error", r.isError, r.text);
   await c.close();

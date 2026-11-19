@@ -16,6 +16,7 @@ const TEN_MINUTES = 10 * 60 * 1000;
 export class Lookup {
   private users = new TtlCache<Map<string, Principal>>(TEN_MINUTES);
   private groups = new TtlCache<Principal | undefined>(TEN_MINUTES);
+  private statuses = new TtlCache<string | undefined>(60 * 60 * 1000);
 
   constructor(private wc: WebCenterClient) {}
 
@@ -53,6 +54,36 @@ export class Lookup {
     const g = await this.group(id);
     if (g) return g;
     return { id };
+  }
+
+  /**
+   * Status name for a status ID. GetProjects only returns IDs, but the search index shows names,
+   * so look up one project that has this status by its exact name. Cached for an hour.
+   */
+  statusName(statusId: string, sampleProjectName: string): Promise<string | undefined> {
+    return this.statuses.get(statusId, async () => {
+      const { text } = await this.wc.callRaw("Search.jsp", {
+        v: 1, format: "json", newsearch: "proj", columns: "proj.name,proj.status",
+        "filter(proj.name).query": sampleProjectName, endindex: 20,
+      });
+      const d = JSON.parse(text);
+      for (const r of arr(d?.results?.table?.rows)) {
+        const cells = arr(r.cells);
+        const name = arr(cells.find((c: any) => c.id === "proj.name")?.values)[0];
+        const status = arr(cells.find((c: any) => c.id === "proj.status")?.values)[0];
+        if (String(name?.value ?? "").toLowerCase() === sampleProjectName.toLowerCase() && status?.value) return String(status.value);
+      }
+      return undefined;
+    }).catch(() => undefined);
+  }
+
+  /** Add status names to shaped projects that only have status_id. */
+  async fillStatusNames(projects: { name?: string; status?: string; status_id?: string }[]) {
+    const samples = new Map<string, string>();
+    for (const p of projects) if (!p.status && p.status_id && p.name && !samples.has(p.status_id)) samples.set(p.status_id, p.name);
+    const names = new Map<string, string | undefined>();
+    await Promise.all([...samples].map(async ([id, name]) => names.set(id, await this.statusName(id, name))));
+    for (const p of projects) if (!p.status && p.status_id && names.get(p.status_id)) p.status = names.get(p.status_id);
   }
 
   /** Resolve many IDs at once (deduplicated). */

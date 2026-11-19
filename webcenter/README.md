@@ -13,8 +13,6 @@ End-user install guide: [../docs/INSTALL-WebCenter.md](../docs/INSTALL-WebCenter
 | `webcenter_list_documents` | GetDocumentList | Documents in a project: version, author, approval, viewer link |
 | `webcenter_get_document_history` | GetDocumentHistory | Every version, approval stages, decisions, comments, pending approvers |
 | `webcenter_get_attributes` | GetAttributes | Specs on a project, document or task, including document references |
-| `webcenter_get_document_references` | GetDocRefParentObjects / ChildDocument / ParentDocument | Where a design is used; what an attribute references |
-| `webcenter_get_project_tasks` | GetProjectTasks | Tasks: status, owner, dates, documents, specifications, dependencies |
 | `webcenter_get_thumbnail` | DocumentGetThumbnailData / ProjectGetThumbnailData | Inline thumbnail image |
 | `webcenter_download_document` | DownloadDocument | Save a document (e.g. .ARD) to the local download folder |
 | `webcenter_get_todo_list` | GetUserTodoList | Tasks and approvals waiting on a user |
@@ -38,9 +36,9 @@ End-user install guide: [../docs/INSTALL-WebCenter.md](../docs/INSTALL-WebCenter
 
 ```
 src/client.ts             HTTP client, allowlist, XML parsing, error hints
-src/lookup.ts             cached user/group name resolution
+src/lookup.ts             cached user/group/status name resolution
 src/tools.ts              core tools (projects, documents, history, to-do, users, search)
-src/tools-engineering.ts  engineer tools (attributes, references, tasks, thumbnails, downloads, groups, characteristics, diagnostics)
+src/tools-engineering.ts  engineer tools (attributes, thumbnails, downloads, groups, characteristics, diagnostics)
 src/index.ts              server entry; WEBCENTER_BASE_URL=mock starts the built-in mock
 mock/server.mjs           mock WebCenter returning SDK-shaped XML
 test/run.mjs              end-to-end tests through a real MCP client
@@ -66,3 +64,18 @@ Environment variables (outside Claude Desktop): `WEBCENTER_BASE_URL` (or `mock`)
 2. Register the tool with `annotations: READ_ONLY`.
 3. Add a handler to `mock/server.mjs` and checks to `test/run.mjs`.
 4. If the live site's XML differs from the SDK document, check it with `webcenter_diagnostics_raw_response` and handle both names (see `pick()`).
+
+## Not included, and why
+
+These were tried against `abp.esko-saas.com` and left out:
+
+- **Project tasks** (`GetProjectTasks`): the site isn't licensed for WebCenter task management ("You do not have Basic Task management license").
+- **Where-used / document references** (`GetDocRefParentObjects` etc.): the site returns HTTP 500, and no document-reference attributes are in use.
+
+## Live-site differences from the SDK document
+
+- Project managers can be groups. The manager comes back as `<manager><group id=…><name>…</name></group></manager>`, and group IDs overlap user IDs, so `manager_type` decides which one it is.
+- GetProjects returns only `status_id`. Status names come from the search index (`proj.status`) and are cached.
+- GetProjects returns only attribute IDs. `webcenter_get_project` uses GetAttributes to show names.
+- DateTime attributes are epoch milliseconds.
+- Search (`format=json`) returns `{meta.fields, stats, results.table.rows[].cells[]}`, which is flattened to rows.

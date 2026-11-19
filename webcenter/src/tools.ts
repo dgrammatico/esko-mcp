@@ -26,8 +26,26 @@ export const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempoten
 export const wild = (s?: string) => (!s ? undefined : s.includes("*") ? s : `*${s}*`);
 
 // ---- output shaping ----------------------------------------------------------
-function shapeProject(p: any, detailed: boolean) {
+/** Who manages a project. The live site nests <group> or <user> inside <manager>; the SDK document shows user fields directly. */
+function shapeManager(p: any) {
   const m = p.manager;
+  const type = str(p.manager_type);
+  const g = arr(m?.group)[0];
+  if (g) return { id: g["@id"] ?? m?.["@id"], kind: str(g.is_role) === "1" ? "role" : "group", name: str(g.name) };
+  const u = arr(m?.user)[0] ?? (m && (m.name !== undefined || m.first_name !== undefined) ? m : undefined);
+  if (u && type !== "group") {
+    return { id: u["@id"] ?? m?.["@id"], kind: "user", username: str(u.name), name: [str(u.first_name), str(u.last_name)].filter(Boolean).join(" ") || str(u.name), email: str(u.email) };
+  }
+  return { id: str(p.manager_id) ?? m?.["@id"], kind: type };
+}
+
+function shapeCreator(p: any) {
+  const c = p.projectcreator;
+  if (!c) return undefined;
+  return { id: c["@id"], username: str(c.name), name: [str(c.first_name), str(c.last_name)].filter(Boolean).join(" ") || undefined };
+}
+
+function shapeProject(p: any, detailed: boolean) {
   const base = {
     id: p["@id"],
     name: str(p.name),
@@ -35,7 +53,8 @@ function shapeProject(p: any, detailed: boolean) {
     is_template: str(p.is_template) === "1",
     status: pick(p, "status_name", "project_status_name") ?? str(p.status?.status_name) ?? str(p.status?.name),
     status_id: str(p.status_id) ?? str(p.status?.["@id"]),
-    manager: m ? { id: m["@id"], kind: "user", username: str(m.name), name: [str(m.first_name), str(m.last_name)].filter(Boolean).join(" ") || undefined, email: str(m.email) } : { id: str(p.manager_id), kind: str(p.manager_type) },
+    manager: shapeManager(p) as any,
+    created_by: shapeCreator(p),
     created: date(p.created_date),
     modified: date(p.modified_date),
     due: date(p.due_date),
@@ -64,8 +83,12 @@ function shapeUserRef(u: any) {
   });
 }
 
-/** Fill in manager names that GetProjects left as bare IDs (often groups). */
+/** Fill in manager names that GetProjects left as bare IDs, and status names WebCenter only gives as IDs. */
 async function fillManagers(lookup: Lookup, projects: any[]) {
+  await Promise.all([fillManagerNames(lookup, projects), lookup.fillStatusNames(projects)]);
+}
+
+async function fillManagerNames(lookup: Lookup, projects: any[]) {
   const missing = projects.map((p) => p.manager).filter((m: any) => m?.id && !m.name);
   if (!missing.length) return;
   const found = await lookup.many(missing.map((m: any) => ({ id: m.id, kindHint: m.kind })));
@@ -85,6 +108,14 @@ function versionOf(d: any): string | undefined {
     if (/version/i.test(k) && !/id$|_id|comment/i.test(k) && /^\d{1,5}$/.test(String(val))) return String(val);
   }
   return undefined;
+}
+
+/** An attribute's display value: DateTime epoch-ms becomes an ISO date. */
+export function attrValue(t: any): string | undefined {
+  const v = str(t?.av);
+  if (v === undefined) return undefined;
+  if (/date/i.test(str(t?.at) ?? "") && /^\d{11,14}$/.test(v)) return new Date(Number(v)).toISOString().slice(0, 10);
+  return v;
 }
 
 // ---- tools -----------------------------------------------------------------
@@ -161,8 +192,19 @@ export function registerTools(server: McpServer, wc: WebCenterClient, lookup: Lo
         });
         const list = arr(doc.get_project_list?.project_list?.project);
         if (!list.length) throw new WebCenterError("No project found with that ID or name, or it isn't visible to this user.");
-        const project = shapeProject(list[0], true);
+        const project: any = shapeProject(list[0], true);
         await fillManagers(lookup, [project]);
+        // GetProjects only gives attribute IDs; GetAttributes gives names. Show named, non-empty values.
+        try {
+          const attrs = await wc.call("GetAttributes.jsp", { projectid: project.id, categorydetails: 1 });
+          const root = attrs[Object.keys(attrs).find((k) => k !== "?xml") ?? ""] ?? attrs;
+          const named = arr(root?.attribute_category ?? attrs.attribute_category).flatMap((c: any) => arr(c.atts?.att))
+            .map((t: any) => ({ name: str(t.an), value: attrValue(t) }))
+            .filter((x: any) => x.value !== undefined);
+          if (named.length) project.attributes = named;
+        } catch {
+          /* keep the ID-only attributes */
+        }
         return ok({ project, other_matches: list.slice(1).map((p: any) => ({ id: p["@id"], name: str(p.name) })) });
       } catch (e) {
         return fail(e);
@@ -479,6 +521,20 @@ export function registerTools(server: McpServer, wc: WebCenterClient, lookup: Lo
             throw new WebCenterError(`WebCenter error ${code ?? "000"}: ${msg ?? "Undefined error"}`, code);
           }
           throw new WebCenterError("Search did not return JSON. Check the saved search name and filter syntax.");
+        }
+        const d: any = data;
+        const table = d?.results?.table;
+        if (table?.rows) {
+          const fields = new Map<string, string>(arr(d?.meta?.fields).map((f: any) => [f.id, f.label ?? f.id]));
+          const rows = arr(table.rows).map((r: any) => {
+            const row: Record<string, string | undefined> = { id: r.id };
+            for (const c of arr(r.cells)) {
+              const vals = arr(c.values).map((v: any) => v.displaytxt ?? v.value).filter((x: any) => x !== undefined && x !== "");
+              row[fields.get(c.id) ?? c.id] = vals.join(", ") || undefined;
+            }
+            return row;
+          });
+          return ok({ note: "Results come from the search index and may lag behind recent changes. For document searches, id is the document version ID.", total: d?.stats?.total, returned: d?.stats?.returned, rows });
         }
         return ok({ note: "Results come from the search index and may lag behind recent changes.", results: data });
       } catch (e) {

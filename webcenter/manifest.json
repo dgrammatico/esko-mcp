@@ -3,7 +3,7 @@
   "name": "webcenter-readonly",
   "display_name": "Esko WebCenter (read-only)",
   "version": "1.0.0",
-  "description": "Read-only access to Esko WebCenter for packaging engineers: projects, documents and ArtiosCAD designs, specs, where-used, tasks, approvals, thumbnails and downloads.",
+  "description": "Read-only access to Esko WebCenter for packaging engineers: projects, documents and ArtiosCAD designs, specs, approvals, thumbnails and downloads.",
   "long_description": "Uses the WebCenter SDK over HTTPS. Every tool is read-only: the server refuses to call any SDK page that changes data in WebCenter. The download tool saves files to a folder on this computer. Set the WebCenter address to 'mock' to try it with built-in sample data.",
   "author": {
     "name": "Anchor Bay Packaging"
@@ -46,14 +46,6 @@
     {
       "name": "webcenter_get_attributes",
       "description": "Specs/attributes on a project, document or task."
-    },
-    {
-      "name": "webcenter_get_document_references",
-      "description": "Where a design is used, and what it references."
-    },
-    {
-      "name": "webcenter_get_project_tasks",
-      "description": "A project's tasks: status, owner, dates, documents, specifications."
     },
     {
       "name": "webcenter_get_thumbnail",
