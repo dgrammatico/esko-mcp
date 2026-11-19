@@ -1,3 +1,13 @@
+## Esko WebCenter MCP 1.2.0
+
+**New: Microsoft 365 Copilot edition.** A hosted version of the server for Copilot Studio and the Microsoft 365 Copilot app, installed on a Windows VM with one script. It comes with HTTPS and an automatic certificate, starts on its own, and has a health check.
+- Engineers sign in with their Microsoft work account. The server verifies every request and can be limited to an assigned group.
+- WebCenter calls run as one read-only service account, because per-user WebCenter sign-in needs WebCenter 26.07 or later, and that mode is already built in.
+- Every tool call is audit-logged with the user's name.
+- Setup guide: `COPILOT-SETUP.md`. VM bundle: `esko-webcenter-remote-1.2.0.zip`.
+
+The Claude Desktop extension is unchanged apart from the version number.
+
 ## Esko WebCenter MCP 1.1.1
 
 **Connection status in the troubleshooting tool.** Run `webcenter_diagnostics_raw_response` with no page to see whether the extension is using a shared session or per-call logins, whether a session is open, and session counters.

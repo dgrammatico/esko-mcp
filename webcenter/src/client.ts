@@ -310,6 +310,17 @@ export class WebCenterClient {
     this.idleTimer.unref?.();
   }
 
+  /**
+   * Check that the configured credentials (or OAuth token) are accepted by WebCenter.
+   * Opens the shared session when available; otherwise makes one cheap call any user may make.
+   * Throws WebCenterError (code 001 for a rejected login).
+   */
+  async verifyLogin(): Promise<void> {
+    const s = await this.ensureSession();
+    if (s) return;
+    await this.call("GetUserTodoList.jsp", { showtasks: 0, showapprovals: 0 });
+  }
+
   /** Close the shared session, if one is open. Safe to call any time. */
   async close(): Promise<void> {
     if (this.idleTimer) clearTimeout(this.idleTimer);

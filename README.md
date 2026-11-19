@@ -6,9 +6,10 @@ MCP servers that connect Claude to Anchor Bay Packaging's Esko systems.
 |---|---|---|
 | [`webcenter/`](webcenter/) | **Esko WebCenter (read-only)**: projects, documents and ArtiosCAD designs, specs, approvals, thumbnails, downloads | 1.0.0, in use |
 
-## Install (engineers)
+## Install
 
-Download the latest `esko-webcenter-*.mcpb` from [Releases](../../releases) and follow [docs/INSTALL-WebCenter.md](docs/INSTALL-WebCenter.md).
+- **Claude Desktop (each engineer):** download `esko-webcenter-<version>.mcpb` from [Releases](../../releases) and follow [docs/INSTALL-WebCenter.md](docs/INSTALL-WebCenter.md).
+- **Microsoft 365 Copilot (IT, once):** host `esko-webcenter-remote-<version>.zip` on a Windows VM and publish a Copilot Studio agent by following [docs/COPILOT-SETUP.md](docs/COPILOT-SETUP.md).
 
 ## Develop
 

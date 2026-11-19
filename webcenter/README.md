@@ -1,8 +1,15 @@
 # Esko WebCenter MCP server (read-only)
 
-A Claude Desktop extension that gives Claude read-only access to Esko WebCenter through the WebCenter SDK (JSP calls over HTTPS). Built from the *WebCenter 26.07 SDK* document and verified against `abp.esko-saas.com`.
+Gives AI assistants read-only access to Esko WebCenter through the WebCenter SDK (JSP calls over HTTPS). Built from the *WebCenter 26.07 SDK* document and verified against `abp.esko-saas.com` (WebCenter 25.07).
 
-End-user install guide: [../docs/INSTALL-WebCenter.md](../docs/INSTALL-WebCenter.md)
+Two editions from one codebase:
+
+| Edition | Entry point | For | Guide |
+|---|---|---|---|
+| Desktop | `src/index.ts` → `server/index.js` (stdio) | Claude Desktop extension (`.mcpb`), each user's own WebCenter login | [INSTALL-WebCenter.md](../docs/INSTALL-WebCenter.md) |
+| Remote | `src/http.ts` → `server/http.js` (Streamable HTTP) | Copilot Studio / Microsoft 365 Copilot, hosted on a Windows VM | [COPILOT-SETUP.md](../docs/COPILOT-SETUP.md) |
+
+Remote auth modes (`MCP_AUTH_MODE`): `entra` (Microsoft sign-in verified by the server, WebCenter calls as a service account, audit-logged), `oauth` (each user's WebCenter OAuth token passed through, needs WebCenter 26.07+), `service` (API key, testing only). The remote edition leaves out `webcenter_download_document`, because it would save to the server rather than the user's computer.
 
 ## Tools
 
@@ -39,7 +46,11 @@ src/client.ts             HTTP client, allowlist, XML parsing, error hints
 src/lookup.ts             cached user/group/status name resolution
 src/tools.ts              core tools (projects, documents, history, to-do, users, search)
 src/tools-engineering.ts  engineer tools (attributes, thumbnails, downloads, groups, characteristics, diagnostics)
-src/index.ts              server entry; WEBCENTER_BASE_URL=mock starts the built-in mock
+src/server.ts             builds the MCP server with all tools (shared by both editions)
+src/index.ts              desktop entry (stdio); WEBCENTER_BASE_URL=mock starts the built-in mock
+src/http.ts               remote entry (Streamable HTTP, Entra/OAuth/API-key auth, audit log)
+deploy/windows/           install.ps1 / uninstall.ps1 for the Windows VM (Node, Caddy HTTPS, startup tasks)
+test/http.mjs             end-to-end tests for the remote edition
 mock/server.mjs           mock WebCenter returning SDK-shaped XML
 test/run.mjs              end-to-end tests through a real MCP client
 scripts/pack.mjs          builds the .mcpb
@@ -54,6 +65,8 @@ npm run build        # tsc --noEmit + esbuild bundle -> server/index.js
 npm test             # end-to-end checks against the mock
 npm run mock         # standalone mock at http://127.0.0.1:8765/WebCenter/ (MOCKUSER / mockpass)
 npm run package      # -> dist/esko-webcenter-<version>.mcpb
+npm run package-remote  # -> dist/esko-webcenter-remote-<version>.zip (VM bundle)
+npm run serve        # run the remote server locally (needs env vars; WEBCENTER_BASE_URL=mock for sample data)
 ```
 
 Environment variables (outside Claude Desktop): `WEBCENTER_BASE_URL` (or `mock`), `WEBCENTER_USERNAME`, `WEBCENTER_PASSWORD`, `WEBCENTER_OAUTH_TOKEN`, `WEBCENTER_SSOIID`, `WEBCENTER_ALLOW_LIVE`, `WEBCENTER_DOWNLOAD_DIR`, `WEBCENTER_TIMEOUT_MS`, `WEBCENTER_MAX_CONCURRENT`, `WEBCENTER_SESSION_MODE` (`auto` default, `session`, `per-call`), `WEBCENTER_SESSION_IDLE_MS` (default 90000).

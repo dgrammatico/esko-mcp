@@ -81,7 +81,7 @@ function shapeCharTree(elems: any[]): any[] {
 
 // ---- tools -----------------------------------------------------------------
 
-export function registerEngineeringTools(server: McpServer, wc: WebCenterClient, _lookup: Lookup) {
+export function registerEngineeringTools(server: McpServer, wc: WebCenterClient, _lookup: Lookup, opts: { remote?: boolean } = {}) {
   // 9. Attributes / specifications (SDK 3.44 GetAttributes.jsp)
   server.registerTool(
     "webcenter_get_attributes",
@@ -159,6 +159,8 @@ export function registerEngineeringTools(server: McpServer, wc: WebCenterClient,
     },
   );
 
+  // Downloads save to the computer running the server, so they only make sense in the desktop build.
+  if (!opts.remote) {
   // 13. Download a document to this computer (SDK 3.16 DownloadDocument.jsp)
   server.registerTool(
     "webcenter_download_document",
@@ -200,6 +202,7 @@ export function registerEngineeringTools(server: McpServer, wc: WebCenterClient,
       }
     },
   );
+  }
 
   // 14. Group details (SDK 3.49 GetGroupInfo.jsp)
   server.registerTool(

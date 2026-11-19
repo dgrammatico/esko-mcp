@@ -1,13 +1,10 @@
 #!/usr/bin/env node
 // Read-only MCP server for Esko WebCenter (stdio transport).
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { WebCenterClient, loadConfig } from "./client.js";
-import { registerTools } from "./tools.js";
-import { registerEngineeringTools } from "./tools-engineering.js";
 import { Lookup } from "./lookup.js";
-import { SERVER_VERSION } from "./version.js";
+import { createServer } from "./server.js";
 
 // WEBCENTER_BASE_URL=mock starts the built-in mock WebCenter, so the server can be tried with no real site.
 let mockNote = "";
@@ -25,20 +22,10 @@ if ((process.env.WEBCENTER_BASE_URL || "").trim().toLowerCase() === "mock") {
 const config = loadConfig();
 const client = new WebCenterClient(config);
 
-const server = new McpServer(
-  { name: "webcenter", version: SERVER_VERSION },
-  {
-    instructions:
-      "Read-only access to Esko WebCenter (packaging projects, documents including ArtiosCAD designs, approvals, tasks and users). " +
-      "Typical flow: webcenter_find_projects -> webcenter_get_project or webcenter_list_documents -> webcenter_get_document_history. " +
-      "IDs look like 00002_0000000135. Nothing here can change data in WebCenter." +
-      (mockNote ? " This session is connected to a MOCK WebCenter with made-up sample data; say so when presenting results." : ""),
-  },
-);
-
 const lookup = new Lookup(client);
-registerTools(server, client, lookup);
-registerEngineeringTools(server, client, lookup);
+const server = createServer(client, lookup, {
+  note: mockNote ? " This session is connected to a MOCK WebCenter with made-up sample data; say so when presenting results." : "",
+});
 
 await server.connect(new StdioServerTransport());
 

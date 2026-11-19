@@ -29,16 +29,19 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: node scripts/pack.mjs
+      - run: node scripts/pack-remote.mjs
       - uses: actions/upload-artifact@v4
         with:
-          name: esko-webcenter-mcpb
-          path: webcenter/dist/*.mcpb
+          name: esko-webcenter-packages
+          path: |
+            webcenter/dist/*.mcpb
+            webcenter/dist/*.zip
       - name: Publish release (tags only)
         if: startsWith(github.ref, 'refs/tags/webcenter-v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/*.mcpb ../docs/INSTALL-WebCenter.md \
+          gh release create "$GITHUB_REF_NAME" dist/*.mcpb dist/*.zip ../docs/INSTALL-WebCenter.md ../docs/COPILOT-SETUP.md \
             --title "Esko WebCenter MCP ${GITHUB_REF_NAME#webcenter-v}" \
             --notes-file ../docs/RELEASE-NOTES-WebCenter.md || \
-          gh release upload "$GITHUB_REF_NAME" dist/*.mcpb --clobber
+          gh release upload "$GITHUB_REF_NAME" dist/*.mcpb dist/*.zip --clobber

@@ -259,6 +259,9 @@ const handlers = {
   },
 };
 
+// OAuth access tokens the mock accepts (WebCenter 26.07 OAuth plugin)
+const OAUTH_TOKENS = new Set(["mock-token", "mock-token-jane"]);
+
 // Shared sessions opened with OpenSession.jsp (WebCenter allows 5 per user)
 const sessions = new Set();
 const MAX_SESSIONS = 5;
@@ -290,7 +293,8 @@ export function createMockServer() {
     if (pageName === "OpenSession.jsp") {
       if ((q.get("username") || "").toUpperCase() === "NOSESSION") return send(404, "<html><body>404 Not Found</body></html>", "text/html");
       if ((q.get("username") || "").toUpperCase() === "SSOUSER" && !q.get("ssoiid")) return send(200, "<html><head><title>Sign in</title></head><body>SAML login portal</body></html>", "text/html");
-      if (!credsOk() && req.headers["authorization"] !== "Bearer mock-token") return send(200, err("001", "User login failed"));
+      const bearerTok = ((req.headers["authorization"] || "").match(/^Bearer\s+(.+)$/i) || [])[1];
+      if (!credsOk() && !OAUTH_TOKENS.has(bearerTok)) return send(200, err("001", "User login failed"));
       if (sessions.size >= MAX_SESSIONS) return send(200, err("004", "The maximum number of open sessions for the user reached"));
       const id = "MOCK" + Math.random().toString(16).slice(2).toUpperCase();
       sessions.add(id);
@@ -308,7 +312,7 @@ export function createMockServer() {
 
     // Authentication: shared session cookie, OAuth bearer token, or username + base64 password
     const auth = req.headers["authorization"] || "";
-    const tokenOk = auth === "Bearer mock-token";
+    const tokenOk = OAUTH_TOKENS.has((auth.match(/^Bearer\s+(.+)$/i) || [])[1]);
     if (cookieId && !inSession && !q.get("username") && !tokenOk) return send(200, err("001", "User login failed")); // expired session
     if (!tokenOk && !inSession) {
       const user = (q.get("username") || "").toUpperCase();
