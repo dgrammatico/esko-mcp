@@ -4,7 +4,7 @@ MCP servers that connect Claude to Esko systems natively.
 
 | Folder | | Status |
 |---|---|---|
-| [`webcenter/`](webcenter/) | **Esko WebCenter (read-only)**: projects, documents and ArtiosCAD designs, specs, approvals, thumbnails, downloads | 1.0.0, live |
+| [`webcenter/`](webcenter/) | **Esko WebCenter (read-only)**: projects, documents and ArtiosCAD designs, specs, approvals, thumbnails, downloads | 1.2.0, live |
 
 ## Install
 
