@@ -1,57 +1,46 @@
-# Installing the Esko WebCenter tools for Claude
+# Installing Esko WebCenter tools for Claude
 
-This adds read-only WebCenter access to Claude Desktop, so you can ask things like:
+This adds read-only WebCenter access to Claude Desktop.
 
-- "What's the latest version of the CASM design in A40491.2C, and who uploaded it?"
-- "Show me the specs on project ABP4141.3A."
-- "Which projects are managed by US ENGINEERS, and who's in that group?"
-- "Find all ArtiosCAD designs starting with A40491."
-- "Show me a thumbnail of A40491.2BPTA.ARD."
-- "Download the latest A40491.2CASM.ARD so I can open it in ArtiosCAD."
-- "What's waiting on me in WebCenter?"
+## prequisites:
 
-It **can't change anything in WebCenter**. It only reads. Downloads are saved to a folder on your own computer.
-
-## What you need
-
-- Claude Desktop on Windows or Mac, signed in
-- Your WebCenter username and password (the same ones you use at https://abp.esko-saas.com/WebCenter/)
+- Claude Desktop on Win/mac
+- an active webcenter subscription or account and login
 
 ## Install
 
-1. Download **`esko-webcenter-<version>.mcpb`** from the repo's Releases page, or get it from IT.
-2. In Claude Desktop, open **Settings** (Ctrl + comma on Windows) → **Extensions**.
+1. Download **`esko-webcenter-<version>.mcpb`** from Releases
+2. In Claude Desktop, open **Settings** (Win: Ctrl + comma) → **Extensions**.
 3. Click **Advanced settings** → **Install Extension…** and pick the `.mcpb` file.
-   (Double-clicking the file may also work, if your computer knows to open `.mcpb` files with Claude.)
-4. Click **Install**, then fill in:
+4. Click **Install**, then fill into the config:
 
    | Setting | What to enter |
    |---|---|
-   | WebCenter address | Leave as `https://abp.esko-saas.com/WebCenter/` |
-   | Username | Your WebCenter username |
-   | Password | Your WebCenter password. It's stored in your system keychain. |
-   | Download folder | Optional. Defaults to `Downloads\WebCenter`. |
-   | Basic login SSO instance ID | Leave empty unless IT tells you otherwise |
-   | Allow live WebCenter | Leave on |
+   | WebCenter address | Leave as `https://yourdomain.esko-saas.com/WebCenter/` |
+   | Username |  WebCenter username |
+   | Password |  WebCenter password. stored in system keychain |
+   | Download folder path | optional, defaults to `Downloads\WebCenter`. |
+   | Basic login SSO instance ID | Leave blank unless you use SSO. |
+   | Allow live WebCenter | Leave on, turn off for debugging/testing purposes |
 
-5. Make sure the extension's switch is **on**.
-6. Start a new chat and ask: *"What's on my WebCenter to-do list?"*
+5. Enable the extension in Plugins
+6. Start a session
 
-## Updating
+## Updates
 
-Install the new `.mcpb` the same way. It replaces the old version.
+Install the new `.mcpb` and replace
 
 ## Troubleshooting
 
-| Message | Fix |
+| Msg | rec |
 |---|---|
-| `WebCenter error 001: User login failed` | Wrong username or password. Re-enter them in Settings → Extensions → Esko WebCenter. |
-| `error 004 … maximum of 5 open WebCenter sessions` | Log out of WebCenter in your browser (closing the tab isn't enough), or wait about 30 minutes for old sessions to time out. The extension itself uses only one session. |
-| `error 005 … privileges` | Your WebCenter account can't see that. Ask a WebCenter admin. |
-| `returned a web page instead of SDK data` | Single sign-on is involved. Ask IT for the SSO instance ID. |
-| `Live WebCenter calls are switched off` | Turn on "Allow live WebCenter" in the extension settings. |
-| The tools don't appear in Claude | Check the extension is switched on, then start a new chat. |
+| `WebCenter error 001: User login failed` | Wrong username or password.  |
+| `error 004 … maximum of 5 open WebCenter sessions` | No available sessions, log out or wait for a session to time out. max 30min. |
+| `error 005 … privileges` | requires webcenter admin privilege to see |
+| `returned a web page instead of SDK data` | Response if SSO instance is used without being configured. |
+| `Live WebCenter calls are switched off` | Using debugging dataset instead of live, switch in settings. |
+| no tools visible to agent | ensure proper installation and restart client. |
 
-## What it can see
+## permissions
 
-Exactly what your WebCenter account can see, nothing more. Some tools (finding users, groups, projects by characteristic) need admin or project-manager rights and will say so if you don't have them.
+some tools will need admin or project manager rights and will notify before the tool call goes through.
