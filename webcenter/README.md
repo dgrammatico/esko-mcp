@@ -2,14 +2,14 @@
 
 Gives AI assistants read-only access to Esko WebCenter through the WebCenter SDK (JSP calls over HTTPS). Built from the *WebCenter 26.07 SDK* and verified against `domain.esko-saas.com` (WebCenter 25.07).
 
-Two editions from one codebase:
+Two versions from one codebase:
 
-| Edition | Entry point |   | Guide |
+| version | Entry point |   | Guide |
 |---|---|---|---|
-| Desktop | `src/index.ts` → `server/index.js` (stdio) | Claude Desktop extension (`.mcpb`), each user's own WebCenter login | [INSTALL-WebCenter.md](../docs/INSTALL-WebCenter.md) |
-| Remote | `src/http.ts` → `server/http.js` (Streamable HTTP) | Copilot Studio / Microsoft 365 Copilot, hosted on Azure Container Apps (container image `ghcr.io/dgrammatico/esko-webcenter-mcp`) or a Windows VM | [COPILOT-SETUP.md](../docs/COPILOT-SETUP.md) |
+| Desktop | `src/index.ts` → `server/index.js` (stdio) | Claude Desktop extension (`.mcpb`); uses each user's own WebCenter login | [INSTALL-WebCenter.md](../docs/INSTALL-WebCenter.md) |
+| Remote | `src/http.ts` → `server/http.js` (Streamable HTTP) | Copilot Studio / Microsoft 365 Copilot, hosted on Azure Container Apps (container image available at `ghcr.io/dgrammatico/esko-webcenter-mcp`) or a Windows VM | [COPILOT-SETUP.md](../docs/COPILOT-SETUP.md) |
 
-Remote auth modes (`MCP_AUTH_MODE`): `entra` (Microsoft sign-in verified by the server, WebCenter calls as a service account, audit-logged), `oauth` (each user's WebCenter OAuth token passed through, needs WebCenter 26.07+), `service` (API key, testing only). The remote edition leaves out `webcenter_download_document`, because it would save to the server rather than the user's computer.
+Remote auth modes (`MCP_AUTH_MODE`): `entra` (Microsoft sign-in and a called WebCenter service acc), `oauth` (each user has WebCenter OAuth token passed through, needs WebCenter 26.07+), `service` (API key for testing only). NOTE: No `webcenter_download_document` in the remote version.
 
 ## Tools
 
