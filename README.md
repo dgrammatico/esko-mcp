@@ -17,10 +17,10 @@ MCP servers that connect Claude to Esko systems natively.
 cd webcenter
 npm install
 npm run build     # type-check + bundle
-npm test          # end-to-end checks against the built-in mock WebCenter
+npm test          # end-to-end checks against the built-in mock WebCenter dataset
 npm run package   # -> dist/esko-webcenter-<version>.mcpb
 ```
 
-CI runs build, test and package on every push to `webcenter/`, and publishes the remote-edition container to `ghcr.io/dgrammatico/esko-webcenter-mcp` (private). Pushing a tag like `webcenter-v1.2.1` publishes a GitHub release with the `.mcpb` and the remote bundle attached, and tags the image `1.2.1` and `latest`.
+CI runs build, test and package on every push to `webcenter/`, and publishes the version container to `ghcr.io/dgrammatico/esko-webcenter-mcp`. Pushing a tag like `webcenter-v1.2.1` publishes a GitHub release with the `.mcpb` and the remote bundle attached, and tags the image `1.2.1` and `latest`.
 
 Built using the webcenter SDK / API.
