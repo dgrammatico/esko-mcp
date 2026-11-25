@@ -26,4 +26,5 @@ setup:
 
 note- `<server-url>` is the address the hosting step prints, e.g. `https://esko-webcenter-mcp.<region>.azurecontainerapps.io` or `https://yourdomain-webcenter-mcp.eastus.cloudapp.azure.com`.
 
+IMPORTANT:
 **Setup steps for copilot are not available right now due to copilot support issues. Will continue to update with time.**
