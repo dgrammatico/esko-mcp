@@ -1,32 +1,30 @@
 # Esko WebCenter in Microsoft 365 Copilot: setup guide
 
-This puts the read-only WebCenter tools into the Microsoft 365 Copilot app (Copilot Chat) as an agent called **Esko WebCenter**. Engineers open Copilot, pick the agent, and ask things like *"give me the design specs for the crop excellence box."*
-
+This puts the read-only WebCenter tools into the Microsoft 365 Copilot app (Copilot Chat) as an agent called **Esko WebCenter**. Agent has to be selected in copilot to utilize the tools.
 ```
-Copilot app ──(user signs in with their Microsoft work account)──► "WebCenter" agent (declarative agent)
+Copilot app ──(user signs in with their Microsoft account)──► WebCenter agent (declarative agent)
                                                                         │  HTTPS + Entra access token
                                                                         ▼
-                         This server, read-only: Azure Container Apps (recommended, free tier) or a Windows VM
-                                                                        │  WebCenter SDK, one service account
+                         server- Azure Container Apps (recommended deployment) or a Win VM
+                                                                        │  WebCenter
                                                                         ▼
-                                                     https://abp.esko-saas.com/WebCenter/
+                                                     https://yourdomain.esko-saas.com/WebCenter/
 ```
 
-**How sign-in works today:**
-- **Copilot:** engineers sign in to the agent with their Microsoft work account. The server checks that sign-in on every request and accepts only your organization's accounts, optionally only an assigned group.
-- **WebCenter:** the server makes its WebCenter calls with one service account, so everyone sees what that account can see. Your WebCenter is 25.07, and per-user WebCenter sign-in for SDK integrations needs 26.07 or later. See [Later: per-user WebCenter sign-in](#later-per-user-webcenter-sign-in).
-- **Audit log:** every tool call is logged on the VM with the person's name. Arguments and tokens are never logged.
+**sign-in:**
+- **Copilot:**  The server checks sign-in on every request and accepts only your organization accounts that match with the service account domains or optionally only an assigned group.
+- **WebCenter:** Webcenter MUST make calls with one dedicated esko service account for visibility. per user WebCenter sign in for SDK integrations needs v26.07+, See [Later: per-user WebCenter sign-in](#later-per-user-webcenter-sign-in).
+- **Audit log:** every tool call is logged on the machine with the person's name. data like args and tokens are obviously never logged.
 
-Allow about an hour for the whole setup. There are four parts:
+setup:
 
 1. [WebCenter service account](#1-webcenter-service-account)
 2. [Entra app registration](#2-entra-app-registration)
-3. [Host the server](#3-host-the-server): **[A. Azure Container Apps](#a-azure-container-apps-recommended)** (free tier, nothing to maintain) or [B. Windows VM](#b-windows-vm)
-4. [The Copilot agent](#4-the-copilot-agent): **[A. Declarative agent](#4a-declarative-agent-recommended-no-usage-charges)** (recommended: no usage charges) or [B. Copilot Studio agent](#4b-copilot-studio-agent-billed-per-use) (billed per use)
+3. [Host the server](#3-host-the-server)
+4. [The Copilot agent](#4-the-copilot-agent) 
 
-**Cost:** with 3A and 4A the whole setup is designed to cost nothing: Container Apps' free allowance covers the hosting, and a declarative agent whose only tool is an external MCP server isn't metered for Copilot Chat users (only agents grounded in SharePoint or Graph connector data are). Metered agents are off by default, so as long as nobody sets up pay-as-you-go billing for Copilot, there's nothing to charge. If an agent ever needed billing, it would show as unavailable rather than send a bill.
 
-In the steps below, `<server-url>` is the address the hosting step prints, e.g. `https://esko-webcenter-mcp.<region>.azurecontainerapps.io` or `https://abp-webcenter-mcp.eastus.cloudapp.azure.com`.
+note- `<server-url>` is the address the hosting step prints, e.g. `https://esko-webcenter-mcp.<region>.azurecontainerapps.io` or `https://yourdomain-webcenter-mcp.eastus.cloudapp.azure.com`.
 
 ---
 
