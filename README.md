@@ -9,7 +9,7 @@ MCP servers that connect Claude to Esko systems natively.
 ## Install
 
 - download `esko-webcenter-<version>.mcpb` from [Releases](../../releases) and follow [docs/INSTALL-WebCenter.md](docs/INSTALL-WebCenter.md).
-- **Microsoft 365 Copilot: host the remote edition on Azure Container Apps or a Windows VM, then upload the **WebCenter** declarative agent by following [docs/COPILOT-SETUP.md](docs/COPILOT-SETUP.md). The scripts are in `esko-webcenter-remote-<version>.zip`.
+- Microsoft 365 Copilot: host the remote edition on Azure Container Apps or a Windows VM, then upload the **WebCenter** declarative agent by following [docs/COPILOT-SETUP.md](docs/COPILOT-SETUP.md). The scripts are in `esko-webcenter-remote-<version>.zip`.
 
 ## Develop
 
