@@ -1,53 +1,46 @@
 ## Esko WebCenter MCP 1.2.1
 
-**New: a Copilot agent with no usage charges.** The remote zip now has a `copilot-agent` folder that builds a **declarative agent** called **WebCenter** for the Microsoft 365 Copilot app.
-- It uses Copilot's own model and calls the hosted server through an MCP plugin.
-- Engineers are signed in automatically with Entra single sign-on.
-- It needs no Copilot Studio and no billing setup.
-- One script, `build-agent-package.ps1`, builds the zip that you upload in the Microsoft 365 admin center.
-- See `COPILOT-SETUP.md`, step 4A. The Copilot Studio route is still documented as 4B.
+remote zip now has a `copilot-agent` folder that builds a **declarative agent** called **WebCenter** for Microsoft 365 Copilot
+- It calls the hosted server through an MCP plugin.
+- Entra is used for sign in.
+-  `build-agent-package.ps1` builds the zip package upload to host.
+- See `COPILOT-SETUP.md`
 
 Other changes:
 - `deploy-containerapp.ps1 -AddAudience <uri>` adds an accepted token audience without redeploying or re-entering secrets.
 - `-Audience` (both scripts) now accepts a comma-separated list.
-- No server code changes. The server already accepted several audiences and v1 tokens; tests now cover the agent's token shape.
 
 ## Esko WebCenter MCP 1.2.0
 
-**New: Microsoft 365 Copilot edition.** A hosted version of the server for Copilot Studio and the Microsoft 365 Copilot app, with two ways to host it:
-- **Azure Container Apps (recommended):** one deploy script. It scales to zero, fits the free tier, has HTTPS built in, and stores its secrets in Container Apps.
-- **Windows VM:** one install script, with HTTPS and an automatic certificate, auto-start and a health check.
-- Engineers sign in with their Microsoft work account. The server verifies every request and can be limited to an assigned group.
-- WebCenter calls run as one read-only service account, because per-user WebCenter sign-in needs WebCenter 26.07 or later, and that mode is already built in.
-- Every tool call is audit-logged with the user's name.
-- Setup guide: `COPILOT-SETUP.md`. Scripts: `esko-webcenter-remote-1.2.0.zip`. Container image: `ghcr.io/dgrammatico/esko-webcenter-mcp:1.2.0`.
+- **Azure Container Apps (recommended):** deploy script for hosting on azure app service/container apps
+- **Windows VM:** deploy script for hosting on azure VM. contains auth certificate and https.
+- Setup: `COPILOT-SETUP.md`. Script: `esko-webcenter-remote-1.2.0.zip`. Container image: `ghcr.io/dgrammatico/esko-webcenter-mcp:1.2.0`.
 
-The Claude Desktop extension is unchanged apart from the version number.
 
 ## Esko WebCenter MCP 1.1.1
 
-**Connection status in the troubleshooting tool.** Run `webcenter_diagnostics_raw_response` with no page to see whether the extension is using a shared session or per-call logins, whether a session is open, and session counters.
+**Connection status in the troubleshooting tool.** Run `webcenter_diagnostics_raw_response` with no page to see whether the extension is using a shared session or per call logins
 
 ## Esko WebCenter MCP 1.1.0
 
-**One WebCenter session instead of one per request.** Each request used to sign in and out on its own, and requests that failed on WebCenter's side could leave sessions open. Those count toward your 5-session limit and cause "error 004". Now all requests share one session, which closes after 90 seconds of inactivity and when Claude stops the extension. If a session expires, it reopens automatically. If your site doesn't support shared sessions, it falls back to the old behaviour.
+**One WebCenter session instead of one per request.** all requests share one session, with a 90 sec activity timeout. also closes if the agent stops the extension. If a session expires, it reopens automatically. if shared sessions are not supported on another version it will open one for each tool call.
 
-The error 004 message now explains that you need to log out of WebCenter in the browser (closing the tab isn't enough), or wait about 30 minutes.
+The error 004 message now explains that you need to log out of WebCenter.
 
 ## Esko WebCenter MCP 1.0.0
 
-First release for engineers. Read-only: nothing in WebCenter can be changed through it.
+First release, includes read only engineering tools.
 
-**15 tools:** projects, project details, documents, document history and approvals, attributes/specs, thumbnails, downloads (to your computer), to-do list, users, groups, characteristics, projects by characteristic, search, and a troubleshooting tool.
+**15 tools:** projects, project details, documents, document history and approvals, attributes/specs, thumbnails, downloads, to-do list, users, groups, characteristics, projects by characteristic, search, troubleshooting tool.
 
-**Fixed since the first live test:**
-- Document lists now show each document's version number.
+**Fixed**
+- Document lists now show version number.
 - Projects managed by a group now show the group's name instead of an ID.
 - Group-managed projects are no longer mistaken for a user with the same ID.
 - Project status names are shown (e.g. "Active").
-- Project details show attribute names, not just IDs. Empty attributes are hidden, and dates are readable.
-- Search results are returned as simple rows.
+- Project details show attribute names and ID
+- dates are formatted.
+- Search results are returned as rows.
 
-**Install:** download `esko-webcenter-1.0.0.mcpb` below and follow `INSTALL-WebCenter.md`.
+**Install:** download `esko-webcenter-1.0.0.mcpb` below, follow `INSTALL-WebCenter.md`.
 
-**Not included:** project tasks (your WebCenter isn't licensed for task management) and where-used lookups (WebCenter returns a server error).
