@@ -33,11 +33,11 @@ Remote auth modes (`MCP_AUTH_MODE`): `entra` (Microsoft sign-in and a called Web
 
 ## Safety
 
-- **Read-only allowlist** (`READ_ONLY_PAGES` in `src/client.ts`): any SDK page not on the list is refused before a request is made. No create, update, delete, approve or upload call is on it.
-- **Credentials:** sent in an HTTPS POST body, never in a URL. Claude Desktop keeps the password in the OS keychain.
-- **Sessions:** all calls share **one** WebCenter session (`OpenSession.jsp` / `CloseSession.jsp`, SDK 3.1.1), which is closed after 90 s idle and when the server stops. WebCenter allows only 5 sessions per user, browser included, and per-call logins can leave sessions behind when a call fails on the server. If `OpenSession.jsp` isn't available, it falls back to per-call logins. At most 2 calls run at once.
-- **Live switch:** with `WEBCENTER_ALLOW_LIVE` off, only `localhost` or the mock can be called.
-- **Downloads:** written only to the configured download folder, and never overwrite an existing file.
+- **Read-only allowlist** (`READ_ONLY_PAGES` in `src/client.ts`): SDK pages have to be whitelisted or they will be refused before a request is made. No CRUD call can be made otherwise.
+- **Credentials:** sent in an HTTPS POST body. Client pass is in OS keychain obviously.
+- **Sessions:** all calls share **one** WebCenter session (`OpenSession.jsp` / `CloseSession.jsp`, SDK 3.1.1), this autocloses with 90 s idle or when server is stopped. If `OpenSession.jsp` isn't available per-call logins will open a new session each time. Cap for concurrent calls is 2.
+- **Live switch:** with `WEBCENTER_ALLOW_LIVE` off, only `localhost` can be used, mock dataset included.
+- **Downloads:** Path can be configured manually.
 
 ## Layout
 
@@ -69,28 +69,21 @@ npm run mock         # standalone mock at http://127.0.0.1:8765/WebCenter/ (MOCK
 npm run package      # -> dist/esko-webcenter-<version>.mcpb
 npm run package-remote  # -> dist/esko-webcenter-remote-<version>.zip (VM bundle)
 npm run serve        # run the remote server locally (needs env vars; WEBCENTER_BASE_URL=mock for sample data)
-docker build -t esko-webcenter-mcp .   # remote edition image (add --build-arg NODE_IMAGE=mirror.gcr.io/library/node:22-alpine if Docker Hub rate-limits)
+docker build -t esko-webcenter-mcp .   # remote version image (add --build-arg NODE_IMAGE=mirror.gcr.io/library/node:22-alpine if Docker Hub rate-limits)
 ```
 
-Environment variables (outside Claude Desktop): `WEBCENTER_BASE_URL` (or `mock`), `WEBCENTER_USERNAME`, `WEBCENTER_PASSWORD`, `WEBCENTER_OAUTH_TOKEN`, `WEBCENTER_SSOIID`, `WEBCENTER_ALLOW_LIVE`, `WEBCENTER_DOWNLOAD_DIR`, `WEBCENTER_TIMEOUT_MS`, `WEBCENTER_MAX_CONCURRENT`, `WEBCENTER_SESSION_MODE` (`auto` default, `session`, `per-call`), `WEBCENTER_SESSION_IDLE_MS` (default 90000).
+Environment variables: `WEBCENTER_BASE_URL` (or `mock`), `WEBCENTER_USERNAME`, `WEBCENTER_PASSWORD`, `WEBCENTER_OAUTH_TOKEN`, `WEBCENTER_SSOIID`, `WEBCENTER_ALLOW_LIVE`, `WEBCENTER_DOWNLOAD_DIR`, `WEBCENTER_TIMEOUT_MS`, `WEBCENTER_MAX_CONCURRENT`, `WEBCENTER_SESSION_MODE` (`auto` default, `session`, `per-call`), `WEBCENTER_SESSION_IDLE_MS` (default 90000).
 
 ## Adding a tool
 
-1. Add the SDK page to `READ_ONLY_PAGES` only if it changes nothing in WebCenter.
+1. Add the SDK page/uri to `READ_ONLY_PAGES` 
 2. Register the tool with `annotations: READ_ONLY`.
 3. Add a handler to `mock/server.mjs` and checks to `test/run.mjs`.
-4. If the live site's XML differs from the SDK document, check it with `webcenter_diagnostics_raw_response` and handle both names (see `pick()`).
-
-## Not included, and why
-
-These were tried against `abp.esko-saas.com` and left out:
-
-- **Project tasks** (`GetProjectTasks`): the site isn't licensed for WebCenter task management ("You do not have Basic Task management license").
-- **Where-used / document references** (`GetDocRefParentObjects` etc.): the site returns HTTP 500, and no document-reference attributes are in use.
+4. If the live site's XML differs from your sdk version, check it with `webcenter_diagnostics_raw_response` and handle both names (see `pick()`).
 
 ## Live-site differences from the SDK document
 
-- Project managers can be groups. The manager comes back as `<manager><group id=…><name>…</name></group></manager>`, and group IDs overlap user IDs, so `manager_type` decides which one it is.
+- `manager_type` decides group<->manager status
 - GetProjects returns only `status_id`. Status names come from the search index (`proj.status`) and are cached.
 - GetProjects returns only attribute IDs. `webcenter_get_project` uses GetAttributes to show names.
 - DateTime attributes are epoch milliseconds.
