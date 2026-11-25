@@ -1,6 +1,6 @@
 # esko-mcp
 
-MCP servers that connect Claude to Anchor Bay Packaging's Esko systems.
+MCP servers that connect Claude to Esko systems natively.
 
 | Folder | What it is | Status |
 |---|---|---|
