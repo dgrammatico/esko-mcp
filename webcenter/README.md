@@ -1,10 +1,10 @@
 # Esko WebCenter MCP server (read-only)
 
-Gives AI assistants read-only access to Esko WebCenter through the WebCenter SDK (JSP calls over HTTPS). Built from the *WebCenter 26.07 SDK* document and verified against `abp.esko-saas.com` (WebCenter 25.07).
+Gives AI assistants read-only access to Esko WebCenter through the WebCenter SDK (JSP calls over HTTPS). Built from the *WebCenter 26.07 SDK* and verified against `domain.esko-saas.com` (WebCenter 25.07).
 
 Two editions from one codebase:
 
-| Edition | Entry point | For | Guide |
+| Edition | Entry point |   | Guide |
 |---|---|---|---|
 | Desktop | `src/index.ts` → `server/index.js` (stdio) | Claude Desktop extension (`.mcpb`), each user's own WebCenter login | [INSTALL-WebCenter.md](../docs/INSTALL-WebCenter.md) |
 | Remote | `src/http.ts` → `server/http.js` (Streamable HTTP) | Copilot Studio / Microsoft 365 Copilot, hosted on Azure Container Apps (container image `ghcr.io/dgrammatico/esko-webcenter-mcp`) or a Windows VM | [COPILOT-SETUP.md](../docs/COPILOT-SETUP.md) |
